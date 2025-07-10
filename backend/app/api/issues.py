@@ -1,18 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import or_, and_
+from sqlalchemy import or_
 from typing import List, Optional
 import os
 import uuid
-import json
 from datetime import datetime
 
 from app.database import get_db
 from app.models import Issue, User, UserRole, IssueStatus, IssueSeverity
-from app.schemas import (
-    IssueCreate, IssueResponse, IssueUpdate, IssueListResponse,
-    WebSocketMessage
-)
+from app.schemas import IssueResponse, IssueUpdate, IssueListResponse
 from app.core.auth import get_current_active_user, require_roles
 from app.api.websocket import manager
 
@@ -23,11 +19,9 @@ ALLOWED_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png", ".gif", ".doc", ".docx", 
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 
 def save_upload_file(upload_file: UploadFile) -> tuple[str, str]:
-    """Save uploaded file and return (file_path, file_name)"""
     if not upload_file.filename:
         raise HTTPException(status_code=400, detail="No filename provided")
     
-    # Check file extension
     file_ext = os.path.splitext(upload_file.filename)[1].lower()
     if file_ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(
@@ -35,11 +29,9 @@ def save_upload_file(upload_file: UploadFile) -> tuple[str, str]:
             detail=f"File type not allowed. Allowed types: {', '.join(ALLOWED_EXTENSIONS)}"
         )
     
-    # Generate unique filename
     unique_filename = f"{uuid.uuid4()}{file_ext}"
     file_path = os.path.join(UPLOAD_DIR, unique_filename)
     
-    # Save file
     os.makedirs(UPLOAD_DIR, exist_ok=True)
     with open(file_path, "wb") as buffer:
         content = upload_file.file.read()
@@ -123,7 +115,7 @@ def read_issues(
         )
     
     total = query.count()
-    issues = query.offset(skip).limit(limit).all()
+    issues = query.order_by(Issue.created_at.desc()).offset(skip).limit(limit).all()
     
     return IssueListResponse(
         items=issues,
@@ -143,7 +135,6 @@ def read_issue(
     if not issue:
         raise HTTPException(status_code=404, detail="Issue not found")
     
-    # Role-based access control
     if (current_user.role == UserRole.REPORTER and 
         issue.reporter_id != current_user.id):
         raise HTTPException(status_code=403, detail="Not enough permissions")
@@ -161,7 +152,6 @@ async def update_issue(
     if not issue:
         raise HTTPException(status_code=404, detail="Issue not found")
     
-    # Permission check
     can_edit = (
         current_user.role in [UserRole.ADMIN, UserRole.MAINTAINER] or
         (current_user.role == UserRole.REPORTER and issue.reporter_id == current_user.id)
@@ -212,7 +202,6 @@ def delete_issue(
     if not issue:
         raise HTTPException(status_code=404, detail="Issue not found")
     
-    # Delete associated file if exists
     if issue.file_path and os.path.exists(issue.file_path):
         os.remove(issue.file_path)
     
@@ -220,28 +209,3 @@ def delete_issue(
     db.commit()
     
     return {"message": "Issue deleted successfully"}
-
-@router.get("/{issue_id}/file")
-def download_file(
-    issue_id: int,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-):
-    issue = db.query(Issue).filter(Issue.id == issue_id).first()
-    if not issue:
-        raise HTTPException(status_code=404, detail="Issue not found")
-    
-    # Role-based access control
-    if (current_user.role == UserRole.REPORTER and 
-        issue.reporter_id != current_user.id):
-        raise HTTPException(status_code=403, detail="Not enough permissions")
-    
-    if not issue.file_path or not os.path.exists(issue.file_path):
-        raise HTTPException(status_code=404, detail="File not found")
-    
-    from fastapi.responses import FileResponse
-    return FileResponse(
-        path=issue.file_path,
-        filename=issue.file_name,
-        media_type='application/octet-stream'
-    )

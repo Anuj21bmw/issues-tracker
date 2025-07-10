@@ -6,7 +6,7 @@ from typing import List
 
 from app.database import get_db
 from app.models import User, UserRole
-from app.schemas import UserCreate, UserResponse, UserLogin, Token, UserUpdate
+from app.schemas import UserCreate, UserResponse, Token, UserUpdate
 from app.core.auth import (
     verify_password, 
     get_password_hash, 
@@ -20,22 +20,16 @@ router = APIRouter()
 
 @router.post("/register", response_model=UserResponse)
 def register(user: UserCreate, db: Session = Depends(get_db)):
-    # Check if user already exists
     db_user = db.query(User).filter(User.email == user.email).first()
     if db_user:
-        raise HTTPException(
-            status_code=400,
-            detail="Email already registered"
-        )
+        raise HTTPException(status_code=400, detail="Email already registered")
     
-    # Create new user
     hashed_password = get_password_hash(user.password) if user.password else None
     db_user = User(
         email=user.email,
         hashed_password=hashed_password,
         full_name=user.full_name,
-        role=user.role,
-        google_id=user.google_id
+        role=user.role
     )
     db.add(db_user)
     db.commit()
@@ -101,7 +95,6 @@ def delete_user(
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    # Don't allow deleting yourself
     if db_user.id == current_user.id:
         raise HTTPException(status_code=400, detail="Cannot delete yourself")
     

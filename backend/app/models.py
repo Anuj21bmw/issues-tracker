@@ -37,8 +37,9 @@ class User(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
-    # Relationships
-    issues = relationship("Issue", back_populates="reporter")
+    # Relationships - Fix the foreign_keys issue
+    reported_issues = relationship("Issue", foreign_keys="Issue.reporter_id", back_populates="reporter")
+    assigned_issues = relationship("Issue", foreign_keys="Issue.assignee_id", back_populates="assignee")
 
 class Issue(Base):
     __tablename__ = "issues"
@@ -57,8 +58,8 @@ class Issue(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
     # Relationships
-    reporter = relationship("User", foreign_keys=[reporter_id], back_populates="issues")
-    assignee = relationship("User", foreign_keys=[assignee_id])
+    reporter = relationship("User", foreign_keys=[reporter_id], back_populates="reported_issues")
+    assignee = relationship("User", foreign_keys=[assignee_id], back_populates="assigned_issues")
 
 class DailyStats(Base):
     __tablename__ = "daily_stats"

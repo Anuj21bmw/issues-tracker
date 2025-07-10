@@ -1,8 +1,7 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from prometheus_client import Counter, Histogram, generate_latest
-from prometheus_client import CONTENT_TYPE_LATEST
+from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
 from starlette.responses import Response
 import structlog
 import time
@@ -11,9 +10,8 @@ import os
 from app.api.auth import router as auth_router
 from app.api.issues import router as issues_router
 from app.api.dashboard import router as dashboard_router
-from app.api.websocket import ConnectionManager
+from app.api.websocket import manager
 from app.database import engine, Base
-from app.models import User, Issue, DailyStats
 from app.core.config import settings
 
 # Configure structured logging
@@ -40,7 +38,7 @@ REQUEST_DURATION = Histogram('request_duration_seconds', 'Request duration')
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
-    title="Issues & Insights Tracker",
+    title="Issues & Insights Tracker API",
     description="A mini SaaS for tracking issues and insights",
     version="1.0.0",
     docs_url="/api/docs",
@@ -50,43 +48,26 @@ app = FastAPI(
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:80"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# WebSocket manager
-manager = ConnectionManager()
 
 # Middleware for metrics and logging
 @app.middleware("http")
 async def add_process_time_header(request, call_next):
     start_time = time.time()
     
-    # Log request
-    logger.info(
-        "Request started",
-        method=request.method,
-        url=str(request.url),
-        client_ip=request.client.host
-    )
+    logger.info("Request started", method=request.method, url=str(request.url))
     
     response = await call_next(request)
     process_time = time.time() - start_time
     
-    # Update metrics
     REQUEST_COUNT.labels(method=request.method, endpoint=request.url.path).inc()
     REQUEST_DURATION.observe(process_time)
     
-    # Log response
-    logger.info(
-        "Request completed",
-        method=request.method,
-        url=str(request.url),
-        status_code=response.status_code,
-        process_time=process_time
-    )
+    logger.info("Request completed", method=request.method, status_code=response.status_code, process_time=process_time)
     
     response.headers["X-Process-Time"] = str(process_time)
     return response
@@ -107,7 +88,6 @@ async def websocket_endpoint(websocket: WebSocket):
     try:
         while True:
             data = await websocket.receive_text()
-            # Handle any incoming WebSocket messages if needed
     except WebSocketDisconnect:
         manager.disconnect(websocket)
 
@@ -121,6 +101,28 @@ async def metrics():
 async def health_check():
     return {"status": "healthy", "timestamp": time.time()}
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+@app.get("/")
+def read_root():
+    return {
+        "message": "Issues & Insights Tracker API", 
+        "status": "running",
+        "version": "1.0.0",
+        "docs": "/api/docs"
+    }
+
+@app.get("/api/demo")
+def demo_endpoint():
+    return {
+        "demo_accounts": [
+            {"role": "ADMIN", "email": "admin@example.com", "password": "admin123"},
+            {"role": "MAINTAINER", "email": "maintainer@example.com", "password": "maintainer123"},
+            {"role": "REPORTER", "email": "reporter@example.com", "password": "reporter123"}
+        ],
+        "endpoints": {
+            "docs": "/api/docs",
+            "health": "/health",
+            "auth": "/api/auth",
+            "issues": "/api/issues",
+            "dashboard": "/api/dashboard"
+        }
+    }

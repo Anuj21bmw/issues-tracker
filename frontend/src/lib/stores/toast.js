@@ -1,4 +1,4 @@
-import { writable } from 'svelte/stores';
+import { writable } from 'svelte/store';
 
 function createToastStore() {
 	const { subscribe, update } = writable([]);
@@ -9,14 +9,13 @@ function createToastStore() {
 			const id = Date.now() + Math.random();
 			const newToast = {
 				id,
-				type: toast.type || 'info', // success, error, warning, info
+				type: toast.type || 'info',
 				message: toast.message,
 				duration: toast.duration || 5000
 			};
 
 			update(toasts => [...toasts, newToast]);
 
-			// Auto remove after duration
 			setTimeout(() => {
 				update(toasts => toasts.filter(t => t.id !== id));
 			}, newToast.duration);
@@ -26,5 +25,3 @@ function createToastStore() {
 		}
 	};
 }
-
-export const toastStore = createToastStore();

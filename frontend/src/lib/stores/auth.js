@@ -1,7 +1,6 @@
-import { writable } from 'svelte/stores';
+import { writable } from 'svelte/store';
 import { browser } from '$app/environment';
 import { goto } from '$app/navigation';
-import { toastStore } from './toast.js';
 
 const API_URL = 'http://localhost:8000/api';
 
@@ -34,12 +33,10 @@ function createAuthStore() {
 					throw new Error(data.detail || 'Login failed');
 				}
 
-				// Store token
 				if (browser) {
 					localStorage.setItem('token', data.access_token);
 				}
 
-				// Get user info
 				const userResponse = await fetch(`${API_URL}/auth/me`, {
 					headers: {
 						'Authorization': `Bearer ${data.access_token}`
@@ -56,11 +53,6 @@ function createAuthStore() {
 						loading: false
 					});
 
-					toastStore.add({
-						type: 'success',
-						message: 'Login successful!'
-					});
-
 					goto('/dashboard');
 				} else {
 					throw new Error('Failed to get user data');
@@ -72,11 +64,7 @@ function createAuthStore() {
 					isAuthenticated: false,
 					loading: false
 				});
-
-				toastStore.add({
-					type: 'error',
-					message: error.message
-				});
+				throw error;
 			}
 		},
 
@@ -98,19 +86,11 @@ function createAuthStore() {
 					throw new Error(data.detail || 'Registration failed');
 				}
 
-				toastStore.add({
-					type: 'success',
-					message: 'Registration successful! Please login.'
-				});
-
 				update(state => ({ ...state, loading: false }));
 				goto('/auth/login');
 			} catch (error) {
 				update(state => ({ ...state, loading: false }));
-				toastStore.add({
-					type: 'error',
-					message: error.message
-				});
+				throw error;
 			}
 		},
 
@@ -124,11 +104,6 @@ function createAuthStore() {
 				token: null,
 				isAuthenticated: false,
 				loading: false
-			});
-
-			toastStore.add({
-				type: 'info',
-				message: 'Logged out successfully'
 			});
 
 			goto('/auth/login');
@@ -156,7 +131,6 @@ function createAuthStore() {
 						loading: false
 					});
 				} else {
-					// Token is invalid
 					localStorage.removeItem('token');
 					set({
 						user: null,
@@ -166,7 +140,6 @@ function createAuthStore() {
 					});
 				}
 			} catch (error) {
-				console.error('Auth check failed:', error);
 				localStorage.removeItem('token');
 				set({
 					user: null,

@@ -30,14 +30,12 @@ def get_dashboard_stats(
         Issue.status != IssueStatus.DONE
     ).group_by(Issue.severity).all()
     
-    issues_by_severity = {
-        severity.value: count for severity, count in severity_counts
-    }
-    
-    # Ensure all severities are represented
+    issues_by_severity = {}
     for severity in IssueSeverity:
-        if severity.value not in issues_by_severity:
-            issues_by_severity[severity.value] = 0
+        issues_by_severity[severity.value] = 0
+    
+    for severity, count in severity_counts:
+        issues_by_severity[severity.value] = count
     
     # Recent activity (last 10 issues)
     recent_activity = db.query(Issue).order_by(Issue.updated_at.desc()).limit(10).all()

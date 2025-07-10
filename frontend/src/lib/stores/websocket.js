@@ -19,11 +19,10 @@ function createWebSocketStore() {
 
 			try {
 				const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-				const wsUrl = `${protocol}//${window.location.host}/ws`;
+				const wsUrl = `${protocol}//${window.location.hostname}:8000/ws`;
 				const socket = new WebSocket(wsUrl);
 
 				socket.onopen = () => {
-					console.log('WebSocket connected');
 					set({ connected: true, socket });
 					reconnectAttempts = 0;
 					if (reconnectInterval) {
@@ -42,7 +41,6 @@ function createWebSocketStore() {
 				};
 
 				socket.onclose = () => {
-					console.log('WebSocket disconnected');
 					set({ connected: false, socket: null });
 					attemptReconnect();
 				};
@@ -76,20 +74,18 @@ function createWebSocketStore() {
 			case 'issue_created':
 				toastStore.add({
 					type: 'info',
-					message: `New issue created: ${message.data.title} by ${message.data.reporter}`,
+					message: `New issue created: ${message.data.title}`,
 					duration: 4000
 				});
-				// Trigger refresh of issues list if on issues page
 				window.dispatchEvent(new CustomEvent('refresh-issues'));
 				break;
 
 			case 'issue_status_changed':
 				toastStore.add({
 					type: 'info',
-					message: `Issue "${message.data.title}" status changed from ${message.data.old_status} to ${message.data.new_status}`,
+					message: `Issue "${message.data.title}" status changed to ${message.data.new_status}`,
 					duration: 4000
 				});
-				// Trigger refresh of issues list if on issues page
 				window.dispatchEvent(new CustomEvent('refresh-issues'));
 				break;
 
@@ -100,16 +96,13 @@ function createWebSocketStore() {
 
 	function attemptReconnect() {
 		if (reconnectAttempts >= maxReconnectAttempts) {
-			console.log('Max reconnect attempts reached');
 			return;
 		}
 
 		if (!reconnectInterval) {
 			reconnectInterval = setInterval(() => {
 				if (reconnectAttempts < maxReconnectAttempts) {
-					console.log(`Attempting to reconnect... (${reconnectAttempts + 1}/${maxReconnectAttempts})`);
 					reconnectAttempts++;
-					// Try to reconnect
 					createWebSocketStore().connect();
 				} else {
 					clearInterval(reconnectInterval);

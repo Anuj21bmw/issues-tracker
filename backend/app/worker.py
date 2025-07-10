@@ -1,8 +1,7 @@
 from celery import Celery
 from celery.schedules import crontab
 from sqlalchemy.orm import Session
-from sqlalchemy import func
-from datetime import date, datetime
+from datetime import date
 import structlog
 
 from app.core.config import settings
@@ -11,7 +10,6 @@ from app.models import Issue, IssueStatus, DailyStats
 
 logger = structlog.get_logger()
 
-# Create Celery app
 celery_app = Celery(
     "worker",
     broker=settings.redis_url,
@@ -51,14 +49,11 @@ def aggregate_daily_stats():
         existing_stats = db.query(DailyStats).filter(DailyStats.date == today).first()
         
         if existing_stats:
-            # Update existing stats
             existing_stats.open_count = open_count
             existing_stats.triaged_count = triaged_count
             existing_stats.in_progress_count = in_progress_count
             existing_stats.done_count = done_count
-            logger.info("Updated existing daily stats", date=today.isoformat())
         else:
-            # Create new stats
             new_stats = DailyStats(
                 date=today,
                 open_count=open_count,
@@ -67,7 +62,6 @@ def aggregate_daily_stats():
                 done_count=done_count
             )
             db.add(new_stats)
-            logger.info("Created new daily stats", date=today.isoformat())
         
         db.commit()
         
@@ -97,7 +91,6 @@ def aggregate_daily_stats():
 
 @celery_app.task
 def process_file_upload(file_path: str, issue_id: int):
-    """Process uploaded files (placeholder for future features like OCR, virus scanning, etc.)"""
+    """Process uploaded files"""
     logger.info("Processing file upload", file_path=file_path, issue_id=issue_id)
-    # Add file processing logic here
     return {"status": "processed", "file_path": file_path, "issue_id": issue_id}
