@@ -3,6 +3,7 @@
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
+	import { browser } from '$app/environment';
 	import { authStore } from '$lib/stores/auth';
 	import { toastStore } from '$lib/stores/toast';
 	import { websocketStore } from '$lib/stores/websocket';
@@ -24,7 +25,8 @@
 	$: isAuthRoute = $page.url.pathname.startsWith('/auth');
 	$: requiresAuth = !isAuthRoute && $page.url.pathname !== '/';
 	
-	$: if (requiresAuth && !$authStore.isAuthenticated) {
+	// Only redirect on client side
+	$: if (browser && requiresAuth && !$authStore.isAuthenticated) {
 		goto('/auth/login');
 	}
 </script>
@@ -53,6 +55,9 @@
 	</div>
 {/if}
 
-{#each $toastStore as toast (toast.id)}
-	<Toast {toast} />
-{/each}
+<!-- Only render toasts on client side -->
+{#if browser && $toastStore}
+	{#each $toastStore as toast (toast.id)}
+		<Toast {toast} />
+	{/each}
+{/if}

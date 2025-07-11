@@ -1,4 +1,4 @@
-import { writable } from 'svelte/stores';
+import { writable } from 'svelte/store';
 import { browser } from '$app/environment';
 import { toastStore } from './toast.js';
 

@@ -1,4 +1,6 @@
 <script>
+	import { onMount } from 'svelte';
+	
 	let apiStatus = 'Loading...';
 	let demoAccounts = [];
 
@@ -14,8 +16,10 @@
 		}
 	}
 
-	// Check backend on load
-	checkBackend();
+	// Check backend on mount (client-side only)
+	onMount(() => {
+		checkBackend();
+	});
 </script>
 
 <svelte:head>
@@ -55,18 +59,6 @@
 			</div>
 		{/if}
 
-		<!-- API Links -->
-		<div class="text-center mt-12">
-			<div class="space-x-4">
-				<a href="http://localhost:8000/api/docs" target="_blank" class="btn-primary">
-					API Documentation
-				</a>
-				<a href="http://localhost:8000/health" target="_blank" class="btn-outline">
-					Health Check
-				</a>
-			</div>
-		</div>
-
 		<!-- Quick Test -->
 		<div class="max-w-md mx-auto mt-12">
 			<div class="card">
@@ -74,6 +66,18 @@
 				<button on:click={checkBackend} class="btn-primary w-full">
 					Test Backend Connection
 				</button>
+			</div>
+		</div>
+
+		<!-- Navigation -->
+		<div class="text-center mt-12">
+			<div class="space-x-4">
+				<a href="/auth/login" class="btn-primary">
+					Login to Dashboard
+				</a>
+				<a href="http://localhost:8000/api/docs" target="_blank" class="btn-outline">
+					API Documentation
+				</a>
 			</div>
 		</div>
 	</div>
