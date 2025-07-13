@@ -15,7 +15,9 @@
 
 	onMount(() => {
 		authStore.checkAuth();
-		websocketStore.connect();
+		if ($authStore.isAuthenticated) {
+			websocketStore.connect();
+		}
 	});
 
 	function toggleSidebar() {
@@ -23,7 +25,8 @@
 	}
 
 	$: isAuthRoute = $page.url.pathname.startsWith('/auth');
-	$: requiresAuth = !isAuthRoute && $page.url.pathname !== '/';
+	$: isHomePage = $page.url.pathname === '/';
+	$: requiresAuth = !isAuthRoute && !isHomePage;
 	
 	// Only redirect on client side
 	$: if (browser && requiresAuth && !$authStore.isAuthenticated) {
@@ -33,23 +36,29 @@
 
 <svelte:head>
 	<title>Issues & Insights Tracker</title>
+	<meta name="description" content="Professional issue tracking and insights platform" />
 </svelte:head>
 
-{#if $authStore.isAuthenticated && !isAuthRoute}
+{#if $authStore.isAuthenticated && !isAuthRoute && !isHomePage}
+	<!-- Authenticated App Layout -->
 	<div class="min-h-screen bg-gray-50">
 		<Navbar {toggleSidebar} />
 		
-		<div class="flex pt-16">
+		<div class="flex">
 			<Sidebar bind:open={sidebarOpen} />
 			
-			<main class="flex-1 p-6 lg:ml-64 transition-all duration-300">
-				<div class="max-w-7xl mx-auto">
-					<slot />
+			<!-- Main Content Area -->
+			<main class="flex-1 lg:ml-64">
+				<div class="pt-16"> <!-- Add padding for fixed navbar -->
+					<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+						<slot />
+					</div>
 				</div>
 			</main>
 		</div>
 	</div>
 {:else}
+	<!-- Landing Page / Auth Layout -->
 	<div class="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
 		<slot />
 	</div>

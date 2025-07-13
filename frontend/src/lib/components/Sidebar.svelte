@@ -34,6 +34,7 @@
 	}
 </script>
 
+<!-- Mobile backdrop -->
 {#if open}
 	<div class="fixed inset-0 z-40 lg:hidden">
 		<button 
@@ -45,9 +46,11 @@
 	</div>
 {/if}
 
-<aside class="fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-gray-200 transform {open ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 transition-transform duration-300 ease-in-out">
-	<div class="flex flex-col h-full">
-		<div class="flex items-center h-16 px-6 border-b border-gray-200">
+<!-- Sidebar -->
+<aside class="fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-gray-200 transform {open ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 transition-transform duration-300 ease-in-out lg:top-16">
+	<div class="flex flex-col h-full lg:h-[calc(100vh-4rem)]">
+		<!-- Mobile header (hidden on desktop) -->
+		<div class="flex items-center h-16 px-6 border-b border-gray-200 lg:hidden">
 			<div class="flex items-center">
 				<div class="flex-shrink-0">
 					<div class="h-8 w-8 bg-blue-600 rounded-lg flex items-center justify-center">
@@ -60,6 +63,7 @@
 			</div>
 		</div>
 
+		<!-- Navigation -->
 		<nav class="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
 			{#each filteredNavigation as item}
 				<a
@@ -68,15 +72,16 @@
 					on:click={() => open = false}
 				>
 					<span class="mr-3 text-lg">{item.icon}</span>
-					{item.name}
+					<span class="font-medium">{item.name}</span>
 				</a>
 			{/each}
 		</nav>
 
+		<!-- User info -->
 		<div class="p-4 border-t border-gray-200">
 			<div class="flex items-center">
 				<div class="flex-shrink-0">
-					<div class="h-8 w-8 bg-blue-100 rounded-full flex items-center justify-center">
+					<div class="h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center">
 						<span class="text-sm font-medium text-blue-600">
 							{$authStore.user?.full_name?.charAt(0) || 'U'}
 						</span>
@@ -87,12 +92,10 @@
 						{$authStore.user?.full_name || 'User'}
 					</div>
 					<div class="text-xs text-gray-500 truncate">
-						{$authStore.user?.role || 'REPORTER'}
+						{$authStore.user?.email || ''}
 					</div>
 				</div>
 			</div>
 		</div>
 	</div>
 </aside>
-
-<div class="hidden lg:block lg:w-64"></div>
