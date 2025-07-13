@@ -4,7 +4,7 @@
 	
 	let email = '';
 	let password = '';
-	let showPassword = false;
+	let passwordElement;
 	
 	async function handleSubmit() {
 		if (!email || !password) {
@@ -40,6 +40,13 @@
 		email = account.email;
 		password = account.password;
 		handleSubmit();
+	}
+
+	function togglePasswordVisibility() {
+		if (passwordElement) {
+			const currentType = passwordElement.type;
+			passwordElement.type = currentType === 'password' ? 'text' : 'password';
+		}
 	}
 </script>
 
@@ -84,16 +91,30 @@
 
 				<div>
 					<label for="password" class="label">Password</label>
-					<input
-						id="password"
-						name="password"
-						type={showPassword ? 'text' : 'password'}
-						autocomplete="current-password"
-						required
-						bind:value={password}
-						class="input"
-						placeholder="Enter your password"
-					/>
+					<div class="relative">
+						<input
+							bind:this={passwordElement}
+							id="password"
+							name="password"
+							type="password"
+							autocomplete="current-password"
+							required
+							bind:value={password}
+							class="input pr-10"
+							placeholder="Enter your password"
+						/>
+						<button
+							type="button"
+							class="absolute inset-y-0 right-0 pr-3 flex items-center"
+							on:click={togglePasswordVisibility}
+							aria-label="Toggle password visibility"
+						>
+							<svg class="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+							</svg>
+						</button>
+					</div>
 				</div>
 
 				<div>

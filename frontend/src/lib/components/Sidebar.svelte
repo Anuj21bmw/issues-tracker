@@ -22,11 +22,26 @@
 		return $page.url.pathname === href || 
 			   ($page.url.pathname.startsWith(href) && href !== '/');
 	}
+
+	function handleBackdropClick() {
+		open = false;
+	}
+
+	function handleBackdropKeydown(event) {
+		if (event.key === 'Escape') {
+			open = false;
+		}
+	}
 </script>
 
 {#if open}
 	<div class="fixed inset-0 z-40 lg:hidden">
-		<div class="fixed inset-0 bg-gray-600 bg-opacity-75" on:click={() => open = false}></div>
+		<button 
+			class="fixed inset-0 bg-gray-600 bg-opacity-75" 
+			on:click={handleBackdropClick}
+			on:keydown={handleBackdropKeydown}
+			aria-label="Close sidebar"
+		></button>
 	</div>
 {/if}
 

@@ -37,7 +37,7 @@ class User(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
-    # Relationships - Fix the foreign_keys issue
+    # Relationships
     reported_issues = relationship("Issue", foreign_keys="Issue.reporter_id", back_populates="reporter")
     assigned_issues = relationship("Issue", foreign_keys="Issue.assignee_id", back_populates="assignee")
 

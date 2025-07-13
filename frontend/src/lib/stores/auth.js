@@ -37,6 +37,7 @@ function createAuthStore() {
 					localStorage.setItem('token', data.access_token);
 				}
 
+				// Get user data
 				const userResponse = await fetch(`${API_URL}/auth/me`, {
 					headers: {
 						'Authorization': `Bearer ${data.access_token}`
@@ -53,7 +54,12 @@ function createAuthStore() {
 						loading: false
 					});
 
-					goto('/dashboard');
+					// Redirect based on role
+					if (userData.role === 'ADMIN' || userData.role === 'MAINTAINER') {
+						goto('/dashboard');
+					} else {
+						goto('/issues');
+					}
 				} else {
 					throw new Error('Failed to get user data');
 				}
@@ -113,7 +119,15 @@ function createAuthStore() {
 			if (!browser) return;
 
 			const token = localStorage.getItem('token');
-			if (!token) return;
+			if (!token) {
+				set({
+					user: null,
+					token: null,
+					isAuthenticated: false,
+					loading: false
+				});
+				return;
+			}
 
 			try {
 				const response = await fetch(`${API_URL}/auth/me`, {
@@ -131,6 +145,7 @@ function createAuthStore() {
 						loading: false
 					});
 				} else {
+					// Token is invalid, remove it
 					localStorage.removeItem('token');
 					set({
 						user: null,
@@ -140,6 +155,7 @@ function createAuthStore() {
 					});
 				}
 			} catch (error) {
+				console.error('Auth check failed:', error);
 				localStorage.removeItem('token');
 				set({
 					user: null,

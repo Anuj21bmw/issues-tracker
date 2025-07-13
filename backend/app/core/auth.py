@@ -13,6 +13,8 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security = HTTPBearer()
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
+    if not hashed_password:
+        return False
     return pwd_context.verify(plain_password, hashed_password)
 
 def get_password_hash(password: str) -> str:
