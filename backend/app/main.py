@@ -2,7 +2,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
-from starlette.responses import Response
+from starlette.responses import Response, FileResponse
 import structlog
 import time
 import os
@@ -45,10 +45,10 @@ app = FastAPI(
     redoc_url="/api/redoc"
 )
 
-# CORS middleware
+# CORS middleware with production settings
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"] if settings.railway_environment == "development" else settings.allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -76,6 +76,10 @@ async def add_process_time_header(request, call_next):
 os.makedirs("uploads", exist_ok=True)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
+# Mount static frontend files if they exist
+if os.path.exists("static"):
+    app.mount("/static", StaticFiles(directory="static"), name="static")
+
 # Include routers
 app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
 app.include_router(issues_router, prefix="/api/issues", tags=["issues"])
@@ -99,16 +103,37 @@ async def metrics():
 # Health check
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy", "timestamp": time.time()}
+    return {"status": "healthy", "timestamp": time.time(), "environment": settings.railway_environment}
 
+# Root endpoint - serve frontend in production
 @app.get("/")
-def read_root():
+async def read_root():
+    # In production, serve the built frontend
+    if os.path.exists("static/index.html"):
+        return FileResponse("static/index.html")
+    
+    # In development, return API info
     return {
         "message": "Issues & Insights Tracker API", 
         "status": "running",
         "version": "1.0.0",
-        "docs": "/api/docs"
+        "docs": "/api/docs",
+        "environment": settings.railway_environment
     }
+
+# Catch-all route for SPA routing
+@app.get("/{path:path}")
+async def catch_all(path: str):
+    # Serve static files if they exist
+    if os.path.exists(f"static/{path}"):
+        return FileResponse(f"static/{path}")
+    
+    # For SPA routes, serve index.html
+    if os.path.exists("static/index.html") and not path.startswith("api/"):
+        return FileResponse("static/index.html")
+    
+    # Return 404 for API routes or if no static files
+    return {"error": "Not found"}, 404
 
 @app.get("/api/demo")
 def demo_endpoint():
@@ -124,5 +149,6 @@ def demo_endpoint():
             "auth": "/api/auth",
             "issues": "/api/issues",
             "dashboard": "/api/dashboard"
-        }
+        },
+        "environment": settings.railway_environment
     }

@@ -5,9 +5,11 @@ const config = {
 		adapter: adapter({
 			pages: 'build',
 			assets: 'build',
-			fallback: 'index.html',
-			precompress: false
-		})
+			fallback: 'index.html'
+		}),
+		prerender: {
+			default: true
+		}
 	}
 };
 

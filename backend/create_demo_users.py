@@ -9,13 +9,20 @@ from app.models import User, UserRole, Issue, IssueSeverity, IssueStatus, Base
 from app.core.auth import get_password_hash
 
 def create_demo_users():
-    # Drop and recreate tables to ensure clean state
-    Base.metadata.drop_all(bind=engine)
+    print("🔧 Setting up database and demo users...")
+    
+    # Ensure tables exist
     Base.metadata.create_all(bind=engine)
     
     db = SessionLocal()
     
     try:
+        # Check if admin user already exists
+        existing_admin = db.query(User).filter(User.email == "admin@example.com").first()
+        if existing_admin:
+            print("✅ Demo users already exist, skipping creation")
+            return
+        
         # Create demo users
         demo_users_data = [
             {
@@ -114,7 +121,7 @@ def create_demo_users():
             print(f"  {user_data['role'].value}: {user_data['email']} / {user_data['password']}")
         
         print(f"\n🎫 Created {len(demo_issues)} sample issues")
-        print(f"🚀 You can now login at http://localhost:3000")
+        print("🚀 Application is ready to use!")
         
     except Exception as e:
         print(f"❌ Error creating demo data: {e}")
