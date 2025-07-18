@@ -3,9 +3,10 @@ from typing import Optional
 import os
 
 class Settings(BaseSettings):
-    # Database configuration
+    # Database configuration - Railway provides DATABASE_URL automatically
     database_url: str = os.getenv(
         "DATABASE_URL", 
+        # Fallback to local development database
         "postgresql://postgres:postgres@localhost:5432/issues_tracker"
     )
     
