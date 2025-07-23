@@ -1,3 +1,4 @@
+# backend/app/main.py - Updated with AI integration
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -10,6 +11,7 @@ import os
 from app.api.auth import router as auth_router
 from app.api.issues import router as issues_router
 from app.api.dashboard import router as dashboard_router
+from app.api.ai import router as ai_router  # New AI router
 from app.api.websocket import manager
 from app.database import engine, Base
 from app.core.config import settings
@@ -38,9 +40,9 @@ REQUEST_DURATION = Histogram('request_duration_seconds', 'Request duration')
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
-    title="Issues & Insights Tracker API",
-    description="A mini SaaS for tracking issues and insights",
-    version="1.0.0",
+    title="AI-Enhanced Issues & Insights Tracker API",
+    description="A next-generation SaaS for intelligent issue tracking with AI capabilities",
+    version="2.0.0",
     docs_url="/api/docs",
     redoc_url="/api/redoc"
 )
@@ -84,6 +86,7 @@ if os.path.exists("static"):
 app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
 app.include_router(issues_router, prefix="/api/issues", tags=["issues"])
 app.include_router(dashboard_router, prefix="/api/dashboard", tags=["dashboard"])
+app.include_router(ai_router, prefix="/api/ai", tags=["ai"])  # New AI endpoints
 
 # WebSocket endpoint
 @app.websocket("/ws")
@@ -100,10 +103,31 @@ async def websocket_endpoint(websocket: WebSocket):
 async def metrics():
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
-# Health check
+# Health check with AI services
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy", "timestamp": time.time(), "environment": settings.railway_environment}
+    health_data = {
+        "status": "healthy", 
+        "timestamp": time.time(), 
+        "environment": settings.railway_environment,
+        "services": {
+            "database": "healthy",
+            "ai_services": "healthy"
+        }
+    }
+    
+    # Check AI services health
+    try:
+        from app.ai.classifier import IssueClassifier
+        classifier = IssueClassifier()
+        # Simple test classification
+        test_result = await classifier.classify_issue("Test", "Test description")
+        health_data["services"]["ai_classifier"] = "healthy"
+    except Exception as e:
+        health_data["services"]["ai_classifier"] = f"unhealthy: {str(e)}"
+        health_data["status"] = "degraded"
+    
+    return health_data
 
 # Root endpoint - serve frontend in production
 @app.get("/")
@@ -112,11 +136,19 @@ async def read_root():
     if os.path.exists("static/index.html"):
         return FileResponse("static/index.html")
     
-    # In development, return API info
+    # In development, return API info with AI features
     return {
-        "message": "Issues & Insights Tracker API", 
+        "message": "AI-Enhanced Issues & Insights Tracker API", 
         "status": "running",
-        "version": "1.0.0",
+        "version": "2.0.0",
+        "features": [
+            "Intelligent issue classification",
+            "AI-powered chat assistant", 
+            "Predictive analytics",
+            "Smart assignment suggestions",
+            "Document processing with OCR",
+            "Automated escalation detection"
+        ],
         "docs": "/api/docs",
         "environment": settings.railway_environment
     }
@@ -143,12 +175,22 @@ def demo_endpoint():
             {"role": "MAINTAINER", "email": "maintainer@example.com", "password": "maintainer123"},
             {"role": "REPORTER", "email": "reporter@example.com", "password": "reporter123"}
         ],
+        "ai_features": [
+            "🤖 AI Chat Assistant - Ask questions in natural language",
+            "🎯 Smart Classification - Automatic severity and tag suggestions", 
+            "⏰ Time Prediction - AI estimates resolution time",
+            "📊 Predictive Analytics - Forecast trends and bottlenecks",
+            "🎪 Auto Assignment - AI suggests best assignee",
+            "📱 Document Analysis - Extract insights from uploads",
+            "🚨 Smart Notifications - Intelligent escalation alerts"
+        ],
         "endpoints": {
             "docs": "/api/docs",
             "health": "/health",
             "auth": "/api/auth",
-            "issues": "/api/issues",
-            "dashboard": "/api/dashboard"
+            "issues": "/api/issues", 
+            "dashboard": "/api/dashboard",
+            "ai": "/api/ai"
         },
         "environment": settings.railway_environment
     }

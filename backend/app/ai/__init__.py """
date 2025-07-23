@@ -1,0 +1,22 @@
+# backend/app/ai/__init__.py
+"""
+AI-Enhanced Issues Tracker
+Advanced AI services for intelligent issue management
+"""
+from .classifier import IssueClassifier
+from .chat_assistant import ChatAssistant
+from .analytics import PredictiveAnalytics
+from .resolution_assistant import ResolutionAssistant
+from .notification_engine import SmartNotificationEngine
+from .document_processor import DocumentProcessor
+from .assignment_engine import SmartAssignmentEngine
+
+__all__ = [
+    'IssueClassifier',
+    'ChatAssistant', 
+    'PredictiveAnalytics',
+    'ResolutionAssistant',
+    'SmartNotificationEngine',
+    'DocumentProcessor',
+    'SmartAssignmentEngine'
+]
