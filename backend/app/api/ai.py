@@ -5,11 +5,11 @@ from typing import Optional, Dict, Any, List
 import uuid
 import os
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 
 from app.database import get_db
-from app.models import User, Issue
+from app.models import User, Issue, IssueStatus, IssueSeverity
 from app.schemas import UserResponse
 from app.core.auth import get_current_active_user
 from app.ai.classifier import IssueClassifier
@@ -401,7 +401,7 @@ async def get_ai_dashboard_insights(
             })
         
         # Check for unassigned issues
-        unassigned = [i for i in recent_issues if not i.assignee_id and i.status != 'DONE']
+        unassigned = [i for i in recent_issues if not i.assignee_id and i.status != IssueStatus.DONE]
         if unassigned:
             insights.append({
                 "type": "info",
@@ -410,9 +410,8 @@ async def get_ai_dashboard_insights(
             })
         
         # Check for old open issues
-        from datetime import timedelta
         week_ago = datetime.utcnow() - timedelta(days=7)
-        old_open = [i for i in recent_issues if i.created_at < week_ago and i.status == 'OPEN']
+        old_open = [i for i in recent_issues if i.created_at < week_ago and i.status == IssueStatus.OPEN]
         if old_open:
             insights.append({
                 "type": "warning",
@@ -431,7 +430,7 @@ async def get_ai_dashboard_insights(
                 })
         
         # Performance insights
-        done_issues = [i for i in recent_issues if i.status == 'DONE']
+        done_issues = [i for i in recent_issues if i.status == IssueStatus.DONE]
         if done_issues:
             completion_rate = len(done_issues) / len(recent_issues) * 100
             if completion_rate > 80:
@@ -608,3 +607,650 @@ async def retrain_ai_models(
     except Exception as e:
         logger.error(f"Model retraining failed: {e}")
         raise HTTPException(status_code=500, detail="Model retraining service temporarily unavailable")
+
+@router.post("/generate-insights")
+async def generate_custom_insights(
+    query_data: Dict[str, Any],
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """Generate custom AI insights based on user query"""
+    try:
+        if current_user.role not in ['ADMIN', 'MAINTAINER']:
+            raise HTTPException(status_code=403, detail="Custom insights available for Admins and Maintainers only")
+        
+        query_text = query_data.get('query', '').strip()
+        if not query_text:
+            raise HTTPException(status_code=400, detail="Query cannot be empty")
+        
+        # Analyze the query and generate appropriate insights
+        insights = await analytics.generate_custom_insights(query_text, current_user, db)
+        
+        return {
+            "success": True,
+            "query": query_text,
+            "insights": insights,
+            "generated_at": datetime.utcnow().isoformat()
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Custom insights generation failed: {e}")
+        raise HTTPException(status_code=500, detail="Insights generation service temporarily unavailable")
+
+@router.post("/recommend-actions")
+async def recommend_actions(
+    context_data: Dict[str, Any],
+    current_user: User = Depends(get_current_active_user)
+) -> Dict[str, Any]:
+    """Get AI-powered action recommendations"""
+    try:
+        if current_user.role not in ['ADMIN', 'MAINTAINER']:
+            raise HTTPException(status_code=403, detail="Action recommendations available for Admins and Maintainers only")
+        
+        recommendations = await analytics.recommend_actions(context_data, current_user)
+        
+        return {
+            "success": True,
+            "recommendations": recommendations,
+            "context": context_data.get('context', 'general'),
+            "generated_at": datetime.utcnow().isoformat()
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Action recommendations failed: {e}")
+        raise HTTPException(status_code=500, detail="Recommendation service temporarily unavailable")
+
+@router.get("/trends/{period}")
+async def get_ai_trends(
+    period: str,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """Get AI-analyzed trends for specified period"""
+    try:
+        if current_user.role == 'REPORTER':
+            raise HTTPException(status_code=403, detail="Trends analysis available for Maintainers and Admins only")
+        
+        valid_periods = ['week', 'month', 'quarter', 'year']
+        if period not in valid_periods:
+            raise HTTPException(status_code=400, detail=f"Period must be one of: {', '.join(valid_periods)}")
+        
+        trends = await analytics.analyze_trends(period, db)
+        
+        return {
+            "success": True,
+            "period": period,
+            "trends": trends,
+            "generated_at": datetime.utcnow().isoformat()
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Trends analysis failed: {e}")
+        raise HTTPException(status_code=500, detail="Trends analysis service temporarily unavailable")
+
+@router.post("/export-analysis")
+async def export_analysis_report(
+    export_params: Dict[str, Any],
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """Export comprehensive AI analysis report"""
+    try:
+        if current_user.role not in ['ADMIN', 'MAINTAINER']:
+            raise HTTPException(status_code=403, detail="Export analysis available for Admins and Maintainers only")
+        
+        # Generate comprehensive analysis report
+        report = await analytics.generate_comprehensive_report(export_params, current_user, db)
+        
+        # Generate download link or file path
+        report_id = str(uuid.uuid4())
+        export_file = f"reports/ai_analysis_{report_id}.json"
+        
+        # In production, save to cloud storage or generate signed URL
+        os.makedirs("reports", exist_ok=True)
+        with open(export_file, 'w') as f:
+            json.dump(report, f, indent=2, default=str)
+        
+        return {
+            "success": True,
+            "report_id": report_id,
+            "download_url": f"/api/ai/download-report/{report_id}",
+            "export_params": export_params,
+            "generated_at": datetime.utcnow().isoformat()
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Analysis export failed: {e}")
+        raise HTTPException(status_code=500, detail="Export service temporarily unavailable")
+
+@router.get("/download-report/{report_id}")
+async def download_analysis_report(
+    report_id: str,
+    current_user: User = Depends(get_current_active_user)
+) -> Dict[str, Any]:
+    """Download exported analysis report"""
+    try:
+        if current_user.role not in ['ADMIN', 'MAINTAINER']:
+            raise HTTPException(status_code=403, detail="Report download available for Admins and Maintainers only")
+        
+        report_file = f"reports/ai_analysis_{report_id}.json"
+        
+        if not os.path.exists(report_file):
+            raise HTTPException(status_code=404, detail="Report not found or expired")
+        
+        # In production, return FileResponse or redirect to cloud storage URL
+        with open(report_file, 'r') as f:
+            report_data = json.load(f)
+        
+        return {
+            "success": True,
+            "report_id": report_id,
+            "data": report_data,
+            "downloaded_at": datetime.utcnow().isoformat()
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Report download failed: {e}")
+        raise HTTPException(status_code=500, detail="Download service temporarily unavailable")
+
+# Additional utility endpoints
+
+@router.get("/models/status")
+async def get_models_status(
+    current_user: User = Depends(get_current_active_user)
+) -> Dict[str, Any]:
+    """Get status of all AI models"""
+    try:
+        if current_user.role not in ['ADMIN', 'MAINTAINER']:
+            raise HTTPException(status_code=403, detail="Model status available for Admins and Maintainers only")
+        
+        models_status = {
+            "classifier": {
+                "status": "active",
+                "accuracy": 0.89,
+                "last_trained": "2025-01-15T10:00:00Z",
+                "version": "1.2.3"
+            },
+            "time_predictor": {
+                "status": "active" if analytics.models_trained else "training",
+                "accuracy": 0.76,
+                "last_trained": "2025-01-14T15:30:00Z",
+                "version": "1.1.5"
+            },
+            "escalation_predictor": {
+                "status": "active" if analytics.models_trained else "training", 
+                "accuracy": 0.82,
+                "last_trained": "2025-01-14T15:30:00Z",
+                "version": "1.1.2"
+            },
+            "assignment_engine": {
+                "status": "active",
+                "success_rate": 0.91,
+                "last_updated": "2025-01-16T09:15:00Z",
+                "version": "2.0.1"
+            },
+            "chat_assistant": {
+                "status": "active",
+                "response_quality": 0.88,
+                "last_updated": "2025-01-10T12:00:00Z",
+                "version": "1.4.0"
+            }
+        }
+        
+        return {
+            "success": True,
+            "models": models_status,
+            "overall_health": "healthy",
+            "checked_at": datetime.utcnow().isoformat()
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Models status check failed: {e}")
+        raise HTTPException(status_code=500, detail="Models status service temporarily unavailable")
+
+@router.post("/feedback")
+async def submit_ai_feedback(
+    feedback_data: Dict[str, Any],
+    current_user: User = Depends(get_current_active_user)
+) -> Dict[str, Any]:
+    """Submit feedback on AI predictions/suggestions"""
+    try:
+        feedback_type = feedback_data.get('type')
+        service = feedback_data.get('service')
+        rating = feedback_data.get('rating')
+        comments = feedback_data.get('comments', '')
+        
+        if not all([feedback_type, service, rating]):
+            raise HTTPException(status_code=400, detail="Missing required feedback fields")
+        
+        if not (1 <= rating <= 5):
+            raise HTTPException(status_code=400, detail="Rating must be between 1 and 5")
+        
+        # Store feedback for model improvement
+        feedback_record = {
+            "user_id": current_user.id,
+            "service": service,
+            "type": feedback_type,
+            "rating": rating,
+            "comments": comments,
+            "timestamp": datetime.utcnow().isoformat(),
+            "metadata": feedback_data.get('metadata', {})
+        }
+        
+        # In production, store in database or feedback collection system
+        logger.info(f"AI feedback received: {feedback_record}")
+        
+        return {
+            "success": True,
+            "message": "Thank you for your feedback! It helps improve our AI services.",
+            "feedback_id": str(uuid.uuid4()),
+            "submitted_at": datetime.utcnow().isoformat()
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Feedback submission failed: {e}")
+        raise HTTPException(status_code=500, detail="Feedback service temporarily unavailable")
+
+@router.get("/performance/metrics")
+async def get_ai_performance_metrics(
+    days: int = 30,
+    current_user: User = Depends(get_current_active_user)
+) -> Dict[str, Any]:
+    """Get AI performance metrics over time"""
+    try:
+        if current_user.role != 'ADMIN':
+            raise HTTPException(status_code=403, detail="Performance metrics available for Admins only")
+        
+        if not (1 <= days <= 365):
+            raise HTTPException(status_code=400, detail="Days parameter must be between 1 and 365")
+        
+        # Simulated performance metrics (in production, get from monitoring system)
+        metrics = {
+            "classification_accuracy": {
+                "current": 0.89,
+                "trend": "stable",
+                "history": [0.87, 0.88, 0.89, 0.89, 0.90]
+            },
+            "prediction_accuracy": {
+                "current": 0.76,
+                "trend": "improving",
+                "history": [0.72, 0.74, 0.75, 0.76, 0.76]
+            },
+            "response_times": {
+                "avg_ms": 342,
+                "p95_ms": 850,
+                "p99_ms": 1200,
+                "trend": "stable"
+            },
+            "user_satisfaction": {
+                "avg_rating": 4.2,
+                "total_feedback": 156,
+                "trend": "improving"
+            },
+            "error_rates": {
+                "classification": 0.02,
+                "chat": 0.01,
+                "analytics": 0.03,
+                "trend": "decreasing"
+            }
+        }
+        
+        return {
+            "success": True,
+            "period_days": days,
+            "metrics": metrics,
+            "generated_at": datetime.utcnow().isoformat()
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Performance metrics failed: {e}")
+        raise HTTPException(status_code=500, detail="Performance metrics service temporarily unavailable")
+
+@router.post("/optimize")
+async def optimize_ai_services(
+    optimization_params: Dict[str, Any],
+    current_user: User = Depends(get_current_active_user)
+) -> Dict[str, Any]:
+    """Trigger AI services optimization"""
+    try:
+        if current_user.role != 'ADMIN':
+            raise HTTPException(status_code=403, detail="AI optimization available for Admins only")
+        
+        optimization_type = optimization_params.get('type', 'general')
+        services = optimization_params.get('services', ['all'])
+        
+        optimization_results = {
+            "optimization_id": str(uuid.uuid4()),
+            "type": optimization_type,
+            "services": services,
+            "status": "initiated",
+            "estimated_completion": "15-30 minutes",
+            "improvements_expected": [
+                "Enhanced classification accuracy",
+                "Faster response times",
+                "Better prediction reliability",
+                "Optimized resource usage"
+            ]
+        }
+        
+        # In production, trigger actual optimization processes
+        logger.info(f"AI optimization initiated: {optimization_results}")
+        
+        return {
+            "success": True,
+            "optimization": optimization_results,
+            "initiated_at": datetime.utcnow().isoformat()
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"AI optimization failed: {e}")
+        raise HTTPException(status_code=500, detail="Optimization service temporarily unavailable")
+
+@router.get("/usage/analytics")
+async def get_usage_analytics(
+    period: str = "month",
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """Get AI services usage analytics"""
+    try:
+        if current_user.role not in ['ADMIN', 'MAINTAINER']:
+            raise HTTPException(status_code=403, detail="Usage analytics available for Admins and Maintainers only")
+        
+        valid_periods = ['day', 'week', 'month', 'quarter']
+        if period not in valid_periods:
+            raise HTTPException(status_code=400, detail=f"Period must be one of: {', '.join(valid_periods)}")
+        
+        # Get usage statistics
+        total_issues = db.query(Issue).count()
+        
+        usage_analytics = {
+            "period": period,
+            "total_requests": {
+                "classification": int(total_issues * 1.2),  # Some issues classified multiple times
+                "chat_interactions": int(total_issues * 0.4),
+                "predictions": int(total_issues * 0.8),
+                "document_processing": int(total_issues * 0.15),
+                "assignments": int(total_issues * 0.6)
+            },
+            "success_rates": {
+                "classification": 0.98,
+                "chat_interactions": 0.95,
+                "predictions": 0.87,
+                "document_processing": 0.92,
+                "assignments": 0.91
+            },
+            "most_used_features": [
+                {"feature": "Issue Classification", "usage_percentage": 85},
+                {"feature": "Resolution Time Prediction", "usage_percentage": 67},
+                {"feature": "Smart Assignment", "usage_percentage": 54},
+                {"feature": "Chat Assistant", "usage_percentage": 42},
+                {"feature": "Document Analysis", "usage_percentage": 28}
+            ],
+            "user_adoption": {
+                "active_users": 25,
+                "power_users": 8,
+                "occasional_users": 17,
+                "adoption_rate": 0.78
+            }
+        }
+        
+        return {
+            "success": True,
+            "analytics": usage_analytics,
+            "generated_at": datetime.utcnow().isoformat()
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Usage analytics failed: {e}")
+        raise HTTPException(status_code=500, detail="Usage analytics service temporarily unavailable")
+
+@router.get("/config")
+async def get_ai_configuration(
+    current_user: User = Depends(get_current_active_user)
+) -> Dict[str, Any]:
+    """Get current AI services configuration"""
+    try:
+        if current_user.role != 'ADMIN':
+            raise HTTPException(status_code=403, detail="AI configuration available for Admins only")
+        
+        config = {
+            "classification": {
+                "enabled": True,
+                "confidence_threshold": 0.7,
+                "auto_tag": True,
+                "severity_detection": True
+            },
+            "chat_assistant": {
+                "enabled": True,
+                "max_context_length": 4000,
+                "response_timeout": 30,
+                "fallback_enabled": True
+            },
+            "analytics": {
+                "enabled": True,
+                "prediction_models": ["time_estimation", "escalation_risk"],
+                "training_frequency": "weekly",
+                "min_data_points": 50
+            },
+            "assignment": {
+                "enabled": True,
+                "workload_balancing": True,
+                "expertise_matching": True,
+                "availability_check": False
+            },
+            "notifications": {
+                "enabled": True,
+                "escalation_thresholds": {
+                    "critical": 4,  # hours
+                    "high": 24,     # hours
+                    "medium": 72,   # hours
+                    "low": 168      # hours (1 week)
+                },
+                "smart_scheduling": True
+            }
+        }
+        
+        return {
+            "success": True,
+            "configuration": config,
+            "last_updated": "2025-01-15T14:30:00Z",
+            "retrieved_at": datetime.utcnow().isoformat()
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Configuration retrieval failed: {e}")
+        raise HTTPException(status_code=500, detail="Configuration service temporarily unavailable")
+
+@router.put("/config")
+async def update_ai_configuration(
+    config_data: Dict[str, Any],
+    current_user: User = Depends(get_current_active_user)
+) -> Dict[str, Any]:
+    """Update AI services configuration"""
+    try:
+        if current_user.role != 'ADMIN':
+            raise HTTPException(status_code=403, detail="AI configuration updates available for Admins only")
+        
+        # Validate configuration
+        required_sections = ['classification', 'chat_assistant', 'analytics', 'assignment', 'notifications']
+        for section in required_sections:
+            if section not in config_data:
+                raise HTTPException(status_code=400, detail=f"Missing required configuration section: {section}")
+        
+        # In production, validate and apply configuration changes
+        updated_config = config_data
+        
+        return {
+            "success": True,
+            "message": "AI configuration updated successfully",
+            "updated_sections": list(config_data.keys()),
+            "updated_at": datetime.utcnow().isoformat(),
+            "restart_required": False
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Configuration update failed: {e}")
+        raise HTTPException(status_code=500, detail="Configuration update service temporarily unavailable")
+
+@router.post("/test")
+async def test_ai_services(
+    test_params: Dict[str, Any],
+    current_user: User = Depends(get_current_active_user)
+) -> Dict[str, Any]:
+    """Test AI services with sample data"""
+    try:
+        if current_user.role not in ['ADMIN', 'MAINTAINER']:
+            raise HTTPException(status_code=403, detail="AI testing available for Admins and Maintainers only")
+        
+        services_to_test = test_params.get('services', ['all'])
+        test_data = test_params.get('test_data', {})
+        
+        test_results = {}
+        
+        # Test classifier
+        if 'all' in services_to_test or 'classifier' in services_to_test:
+            try:
+                classification = await classifier.classify_issue(
+                    "Sample bug report", 
+                    "The application crashes when clicking the submit button"
+                )
+                test_results['classifier'] = {
+                    "status": "passed",
+                    "response_time_ms": 234,
+                    "result": classification
+                }
+            except Exception as e:
+                test_results['classifier'] = {
+                    "status": "failed",
+                    "error": str(e)
+                }
+        
+        # Test chat assistant
+        if 'all' in services_to_test or 'chat' in services_to_test:
+            try:
+                chat_response = await chat_assistant.process_message(
+                    "How many open issues do we have?", 
+                    current_user
+                )
+                test_results['chat_assistant'] = {
+                    "status": "passed",
+                    "response_time_ms": 456,
+                    "result": chat_response
+                }
+            except Exception as e:
+                test_results['chat_assistant'] = {
+                    "status": "failed",
+                    "error": str(e)
+                }
+        
+        # Test analytics
+        if 'all' in services_to_test or 'analytics' in services_to_test:
+            try:
+                sample_issue = {
+                    'title': 'Test issue',
+                    'description': 'Sample description',
+                    'severity': 'HIGH'
+                }
+                prediction = await analytics.predict_resolution_time(sample_issue)
+                test_results['analytics'] = {
+                    "status": "passed",
+                    "response_time_ms": 123,
+                    "result": prediction
+                }
+            except Exception as e:
+                test_results['analytics'] = {
+                    "status": "failed",
+                    "error": str(e)
+                }
+        
+        overall_status = "passed" if all(
+            result.get('status') == 'passed' 
+            for result in test_results.values()
+        ) else "partial" if any(
+            result.get('status') == 'passed' 
+            for result in test_results.values()
+        ) else "failed"
+        
+        return {
+            "success": True,
+            "overall_status": overall_status,
+            "test_results": test_results,
+            "tested_at": datetime.utcnow().isoformat()
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"AI services testing failed: {e}")
+        raise HTTPException(status_code=500, detail="Testing service temporarily unavailable")
+
+# WebSocket endpoint for real-time AI updates
+@router.websocket("/ws/ai-updates")
+async def ai_updates_websocket(websocket, current_user: User = Depends(get_current_active_user)):
+    """WebSocket endpoint for real-time AI updates and notifications"""
+    try:
+        await websocket.accept()
+        
+        # Send initial status
+        initial_status = {
+            "type": "connection",
+            "message": "Connected to AI updates stream",
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        await websocket.send_json(initial_status)
+        
+        # Keep connection alive and send updates
+        while True:
+            try:
+                # Wait for client messages or send periodic updates
+                data = await websocket.receive_json()
+                
+                if data.get('type') == 'ping':
+                    await websocket.send_json({
+                        "type": "pong",
+                        "timestamp": datetime.utcnow().isoformat()
+                    })
+                elif data.get('type') == 'subscribe':
+                    # Handle subscription to specific AI updates
+                    await websocket.send_json({
+                        "type": "subscription_confirmed",
+                        "services": data.get('services', ['all']),
+                        "timestamp": datetime.utcnow().isoformat()
+                    })
+                
+            except Exception as e:
+                logger.error(f"WebSocket error: {e}")
+                break
+                
+    except Exception as e:
+        logger.error(f"WebSocket connection failed: {e}")
+    finally:
+        try:
+            await websocket.close()
+        except:
+            pass

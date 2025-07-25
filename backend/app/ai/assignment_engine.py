@@ -1,4 +1,4 @@
-# backend/app/ai/assignment_engine.py - Complete Implementation
+# backend/app/ai/assignment_engine.py - Complete Implementation with Missing Methods
 import logging
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timedelta
@@ -31,570 +31,678 @@ class SmartAssignmentEngine(AIBaseService):
             
             # Get available maintainers and admins
             available_users = db.query(User).filter(
-                and_(
-                    User.role.in_([UserRole.MAINTAINER, UserRole.ADMIN]),
-                    User.is_active == True
-                )
+                User.role.in_([UserRole.ADMIN, UserRole.MAINTAINER])
             ).all()
             
             if not available_users:
                 return {
-                    'suggested_assignee': None,
+                    'recommended_assignee': None,
                     'reason': 'No available maintainers or admins found',
-                    'confidence': 0.0,
-                    'alternatives': []
+                    'suggestions': [],
+                    'confidence': 0.0
                 }
             
-            # Calculate assignment scores for each user
-            scored_users = []
+            # Analyze issue content for expertise matching
+            issue_text = f"{issue_data.get('title', '')} {issue_data.get('description', '')}".lower()
+            required_expertise = self._identify_required_expertise(issue_text)
+            
+            # Score each potential assignee
+            assignee_scores = []
             for user in available_users:
-                score_details = await self._calculate_assignment_score(user, issue_data)
-                scored_users.append({
-                    'user': {
-                        'id': user.id,
-                        'name': user.full_name,
-                        'email': user.email,
-                        'role': user.role.value
-                    },
-                    'score': score_details['total_score'],
-                    'score_breakdown': score_details,
-                    'current_workload': self._get_user_workload(user.id),
-                    'availability_status': self._assess_availability(user.id)
-                })
+                score_data = await self._calculate_assignee_score(user, issue_data, required_expertise)
+                assignee_scores.append(score_data)
             
-            # Sort by score (highest first)
-            scored_users.sort(key=lambda x: x['score'], reverse=True)
+            # Sort by score and get best match
+            assignee_scores.sort(key=lambda x: x['total_score'], reverse=True)
             
-            if not scored_users:
+            if assignee_scores:
+                best_match = assignee_scores[0]
+                
                 return {
-                    'suggested_assignee': None,
-                    'reason': 'Unable to calculate assignment scores',
-                    'confidence': 0.0,
-                    'alternatives': []
+                    'recommended_assignee': {
+                        'id': best_match['user_id'],
+                        'name': best_match['user_name'],
+                        'role': best_match['user_role']
+                    },
+                    'reason': best_match['reason'],
+                    'confidence': best_match['confidence'],
+                    'all_suggestions': assignee_scores[:3],  # Top 3 suggestions
+                    'analysis_timestamp': datetime.utcnow().isoformat()
                 }
-            
-            best_candidate = scored_users[0]
-            
-            return {
-                'suggested_assignee': best_candidate['user'],
-                'reason': self._generate_assignment_reason(best_candidate),
-                'confidence': min(best_candidate['score'] / 10.0, 1.0),  # Normalize to 0-1
-                'alternatives': scored_users[1:4],  # Top 3 alternatives
-                'score_breakdown': best_candidate['score_breakdown']
-            }
-            
+            else:
+                return {
+                    'recommended_assignee': None,
+                    'reason': 'No suitable assignee found based on current criteria',
+                    'suggestions': [],
+                    'confidence': 0.0
+                }
+                
         except Exception as e:
-            logger.error(f"Error while suggesting assignee: {e}")
+            logger.error(f"Assignee suggestion failed: {e}")
             return {
-                'suggested_assignee': None,
-                'reason': f'An error occurred: {str(e)}',
+                'recommended_assignee': None,
+                'reason': f'Assignment suggestion failed: {str(e)}',
+                'suggestions': [],
                 'confidence': 0.0,
-                'alternatives': []
+                'error': True
             }
         finally:
             db.close()
     
-    async def _calculate_assignment_score(self, user: User, issue_data: Dict) -> Dict:
-        """Calculate comprehensive assignment score for a user"""
+    def _identify_required_expertise(self, issue_text: str) -> List[str]:
+        """Identify required expertise areas from issue text"""
+        required_areas = []
+        
+        for area, keywords in self.expertise_weights.items():
+            if any(keyword in issue_text for keyword in keywords):
+                required_areas.append(area)
+        
+        return required_areas
+    
+    async def _calculate_assignee_score(self, user: User, issue_data: Dict, required_expertise: List[str]) -> Dict[str, Any]:
+        """Calculate assignment score for a user"""
         try:
             db = self.get_db()
             
-            # Initialize score components
-            expertise_score = 0.0
-            workload_score = 0.0
-            performance_score = 0.0
-            availability_score = 0.0
+            # Base scores
+            expertise_score = await self._calculate_expertise_score(user, required_expertise)
+            workload_score = await self._calculate_workload_score(user)
+            availability_score = await self._calculate_availability_score(user)
+            priority_score = self._calculate_priority_score(issue_data, user)
             
-            # 1. Expertise Score (40% weight)
-            expertise_score = self._calculate_expertise_score(user, issue_data)
-            
-            # 2. Workload Score (25% weight)
-            workload_score = self._calculate_workload_score(user.id)
-            
-            # 3. Performance Score (25% weight)
-            performance_score = self._calculate_performance_score(user.id)
-            
-            # 4. Availability Score (10% weight)
-            availability_score = self._calculate_availability_score(user.id)
-            
-            # Calculate weighted total score
+            # Weight the scores
             total_score = (
-                expertise_score * 0.4 +
-                workload_score * 0.25 +
-                performance_score * 0.25 +
-                availability_score * 0.1
+                expertise_score * 0.4 +      # 40% expertise
+                workload_score * 0.3 +       # 30% workload
+                availability_score * 0.2 +   # 20% availability
+                priority_score * 0.1         # 10% priority handling
+            )
+            
+            # Calculate confidence based on score distribution
+            confidence = min(0.95, total_score / 10.0)
+            
+            # Generate reason for recommendation
+            reason = self._generate_assignment_reason(
+                user, expertise_score, workload_score, required_expertise
             )
             
             return {
-                'total_score': total_score,
-                'expertise_score': expertise_score,
-                'workload_score': workload_score,
-                'performance_score': performance_score,
-                'availability_score': availability_score,
-                'breakdown': {
-                    'expertise': f'{expertise_score:.1f}/10',
-                    'workload': f'{workload_score:.1f}/10',
-                    'performance': f'{performance_score:.1f}/10',
-                    'availability': f'{availability_score:.1f}/10'
-                }
+                'user_id': user.id,
+                'user_name': user.full_name,
+                'user_role': user.role.value,
+                'total_score': round(total_score, 2),
+                'expertise_score': round(expertise_score, 2),
+                'workload_score': round(workload_score, 2),
+                'availability_score': round(availability_score, 2),
+                'priority_score': round(priority_score, 2),
+                'confidence': round(confidence, 2),
+                'reason': reason
             }
             
         except Exception as e:
-            logger.error(f"Error calculating assignment score for user {user.id}: {e}")
+            logger.error(f"Assignee score calculation failed for user {user.id}: {e}")
             return {
+                'user_id': user.id,
+                'user_name': user.full_name,
+                'user_role': user.role.value,
                 'total_score': 0.0,
-                'expertise_score': 0.0,
-                'workload_score': 0.0,
-                'performance_score': 0.0,
-                'availability_score': 0.0,
-                'breakdown': {}
+                'confidence': 0.0,
+                'reason': 'Score calculation failed'
             }
-        finally:
-            db.close()
     
-    def _calculate_expertise_score(self, user: User, issue_data: Dict) -> float:
-        """Calculate expertise match score based on issue content"""
-        issue_text = f"{issue_data.get('title', '')} {issue_data.get('description', '')}".lower()
-        
-        max_score = 0.0
-        user_expertise_areas = []
-        
-        # Check each expertise area
-        for area, keywords in self.expertise_weights.items():
-            area_score = 0.0
-            matched_keywords = []
-            
-            for keyword in keywords:
-                if keyword in issue_text:
-                    # Weight by keyword importance and frequency
-                    frequency = issue_text.count(keyword)
-                    keyword_weight = len(keyword) / 10.0  # Longer keywords are more specific
-                    area_score += frequency * keyword_weight
-                    matched_keywords.append(keyword)
-            
-            if area_score > 0:
-                user_expertise_areas.append({
-                    'area': area,
-                    'score': min(area_score, 10.0),
-                    'keywords': matched_keywords
-                })
-                max_score = max(max_score, min(area_score, 10.0))
-        
-        # Get historical performance in similar areas
-        historical_score = self._get_historical_expertise_score(user.id, user_expertise_areas)
-        
-        # Combine current match with historical performance
-        final_score = (max_score * 0.7) + (historical_score * 0.3)
-        
-        return min(final_score, 10.0)
-    
-    def _get_historical_expertise_score(self, user_id: int, expertise_areas: List[Dict]) -> float:
-        """Get historical performance score in similar issue types"""
+    async def _calculate_expertise_score(self, user: User, required_expertise: List[str]) -> float:
+        """Calculate expertise score based on user's past issue resolutions"""
         try:
             db = self.get_db()
             
-            # Get resolved issues assigned to this user
+            # Get user's resolved issues for expertise analysis
             resolved_issues = db.query(Issue).filter(
                 and_(
-                    Issue.assignee_id == user_id,
+                    Issue.assignee_id == user.id,
                     Issue.status == IssueStatus.DONE
                 )
-            ).limit(50).all()  # Last 50 resolved issues
+            ).limit(100).all()  # Last 100 resolved issues
             
             if not resolved_issues:
-                return 5.0  # Neutral score for new users
+                return 3.0  # Default score for new users
             
-            # Calculate average resolution time and success rate
-            total_resolution_time = 0
-            successful_resolutions = 0
+            expertise_matches = 0
+            total_expertise_score = 0
             
-            for issue in resolved_issues:
-                if issue.updated_at and issue.created_at:
-                    resolution_time = (issue.updated_at - issue.created_at).total_seconds() / 3600
-                    total_resolution_time += resolution_time
-                    
-                    # Consider it successful if resolved within expected time for severity
-                    expected_time = self._get_expected_resolution_time(issue.severity)
-                    if resolution_time <= expected_time:
-                        successful_resolutions += 1
-            
-            success_rate = successful_resolutions / len(resolved_issues)
-            avg_resolution_time = total_resolution_time / len(resolved_issues)
-            
-            # Convert to score (higher success rate and lower resolution time = higher score)
-            historical_score = (success_rate * 5) + (max(0, 10 - (avg_resolution_time / 24)) * 0.5)
-            
-            return min(historical_score, 10.0)
-            
-        except Exception as e:
-            logger.error(f"Error calculating historical expertise score: {e}")
-            return 5.0
-        finally:
-            db.close()
-    
-    def _calculate_workload_score(self, user_id: int) -> float:
-        """Calculate workload score (higher score = less workload)"""
-        try:
-            current_workload = self._get_user_workload(user_id)
-            
-            # Score based on current workload (inverse relationship)
-            if current_workload == 0:
-                return 10.0
-            elif current_workload <= 3:
-                return 8.0
-            elif current_workload <= 6:
-                return 6.0
-            elif current_workload <= 10:
-                return 4.0
-            else:
-                return 2.0
+            for expertise_area in required_expertise:
+                area_keywords = self.expertise_weights.get(expertise_area, [])
                 
+                # Count how many resolved issues involved this expertise area
+                area_matches = 0
+                for issue in resolved_issues:
+                    issue_text = f"{issue.title} {issue.description}".lower()
+                    if any(keyword in issue_text for keyword in area_keywords):
+                        area_matches += 1
+                
+                if area_matches > 0:
+                    expertise_matches += 1
+                    # Score based on experience level in this area
+                    area_score = min(10.0, (area_matches / len(resolved_issues)) * 20)
+                    total_expertise_score += area_score
+            
+            if not required_expertise:
+                # If no specific expertise required, give average score
+                return 6.0
+            
+            # Average expertise score across required areas
+            final_score = total_expertise_score / len(required_expertise) if required_expertise else 5.0
+            
+            # Bonus for having experience in multiple required areas
+            if expertise_matches > 1:
+                final_score += 1.0
+            
+            return min(10.0, final_score)
+            
         except Exception as e:
-            logger.error(f"Error calculating workload score: {e}")
-            return 5.0
+            logger.error(f"Expertise score calculation failed: {e}")
+            return 5.0  # Default score on error
     
-    def _get_user_workload(self, user_id: int) -> int:
-        """Get current active issue count for user"""
+    async def _calculate_workload_score(self, user: User) -> float:
+        """Calculate workload score (higher score = less loaded)"""
         try:
             db = self.get_db()
             
-            workload = db.query(Issue).filter(
+            # Count current active issues
+            active_issues = db.query(Issue).filter(
                 and_(
-                    Issue.assignee_id == user_id,
+                    Issue.assignee_id == user.id,
                     Issue.status.in_([IssueStatus.OPEN, IssueStatus.TRIAGED, IssueStatus.IN_PROGRESS])
                 )
             ).count()
             
-            return workload
-            
+            # Score based on workload (inverse relationship)
+            # 0 issues = 10 points, 5 issues = 5 points, 10+ issues = 1 point
+            if active_issues == 0:
+                return 10.0
+            elif active_issues <= 3:
+                return 8.0
+            elif active_issues <= 5:
+                return 6.0
+            elif active_issues <= 8:
+                return 4.0
+            elif active_issues <= 10:
+                return 2.0
+            else:
+                return 1.0
+                
         except Exception as e:
-            logger.error(f"Error getting user workload: {e}")
-            return 0
-        finally:
-            db.close()
-    
-    def _calculate_performance_score(self, user_id: int) -> float:
-        """Calculate performance score based on historical data"""
-        try:
-            db = self.get_db()
-            
-            # Get recent resolved issues (last 30 days)
-            thirty_days_ago = datetime.utcnow() - timedelta(days=30)
-            recent_issues = db.query(Issue).filter(
-                and_(
-                    Issue.assignee_id == user_id,
-                    Issue.status == IssueStatus.DONE,
-                    Issue.updated_at >= thirty_days_ago
-                )
-            ).all()
-            
-            if not recent_issues:
-                return 5.0  # Neutral score for users with no recent activity
-            
-            # Calculate performance metrics
-            total_resolution_time = 0
-            on_time_resolutions = 0
-            
-            for issue in recent_issues:
-                if issue.updated_at and issue.created_at:
-                    resolution_time_hours = (issue.updated_at - issue.created_at).total_seconds() / 3600
-                    total_resolution_time += resolution_time_hours
-                    
-                    # Check if resolved within expected timeframe
-                    expected_hours = self._get_expected_resolution_time(issue.severity)
-                    if resolution_time_hours <= expected_hours:
-                        on_time_resolutions += 1
-            
-            # Calculate metrics
-            on_time_rate = on_time_resolutions / len(recent_issues)
-            avg_resolution_hours = total_resolution_time / len(recent_issues)
-            
-            # Convert to performance score
-            performance_score = (on_time_rate * 6) + (max(0, 4 - (avg_resolution_hours / 24)))
-            
-            return min(performance_score, 10.0)
-            
-        except Exception as e:
-            logger.error(f"Error calculating performance score: {e}")
+            logger.error(f"Workload score calculation failed: {e}")
             return 5.0
-        finally:
-            db.close()
     
-    def _calculate_availability_score(self, user_id: int) -> float:
+    async def _calculate_availability_score(self, user: User) -> float:
         """Calculate availability score based on recent activity"""
         try:
             db = self.get_db()
             
             # Check recent activity (last 7 days)
-            week_ago = datetime.utcnow() - timedelta(days=7)
+            seven_days_ago = datetime.utcnow() - timedelta(days=7)
+            
             recent_activity = db.query(Issue).filter(
                 and_(
-                    Issue.assignee_id == user_id,
-                    Issue.updated_at >= week_ago
+                    Issue.assignee_id == user.id,
+                    Issue.updated_at >= seven_days_ago
                 )
             ).count()
             
-            # Score based on recent activity
+            # Higher recent activity suggests availability
             if recent_activity >= 5:
-                return 10.0  # Very active
+                return 10.0
             elif recent_activity >= 3:
-                return 8.0   # Active
+                return 8.0
             elif recent_activity >= 1:
-                return 6.0   # Somewhat active
+                return 6.0
             else:
-                return 4.0   # Less active
+                return 4.0  # Lower score for inactive users
                 
         except Exception as e:
-            logger.error(f"Error calculating availability score: {e}")
-            return 5.0
-        finally:
-            db.close()
+            logger.error(f"Availability score calculation failed: {e}")
+            return 7.0
     
-    def _get_expected_resolution_time(self, severity: IssueSeverity) -> float:
-        """Get expected resolution time in hours based on severity"""
-        expected_times = {
-            IssueSeverity.CRITICAL: 8,    # 8 hours
-            IssueSeverity.HIGH: 48,       # 2 days
-            IssueSeverity.MEDIUM: 168,    # 1 week
-            IssueSeverity.LOW: 336        # 2 weeks
-        }
-        return expected_times.get(severity, 168)
-    
-    def _assess_availability(self, user_id: int) -> str:
-        """Assess user availability status"""
-        try:
-            workload = self._get_user_workload(user_id)
-            
-            if workload == 0:
-                return "Available"
-            elif workload <= 3:
-                return "Lightly loaded"
-            elif workload <= 6:
-                return "Moderately loaded"
-            elif workload <= 10:
-                return "Heavily loaded"
-            else:
-                return "Overloaded"
-                
-        except Exception as e:
-            logger.error(f"Error assessing availability: {e}")
-            return "Unknown"
-    
-    def _generate_assignment_reason(self, candidate: Dict) -> str:
-        """Generate human-readable reason for assignment suggestion"""
-        user = candidate['user']
-        scores = candidate['score_breakdown']
-        workload = candidate['current_workload']
+    def _calculate_priority_score(self, issue_data: Dict, user: User) -> float:
+        """Calculate priority handling score"""
+        severity = issue_data.get('severity', 'MEDIUM')
         
+        # Admin users get higher priority for critical issues
+        if user.role == UserRole.ADMIN:
+            if severity == 'CRITICAL':
+                return 10.0
+            elif severity == 'HIGH':
+                return 8.0
+            else:
+                return 6.0
+        elif user.role == UserRole.MAINTAINER:
+            if severity in ['CRITICAL', 'HIGH']:
+                return 8.0
+            else:
+                return 7.0
+        else:
+            return 5.0
+    
+    def _generate_assignment_reason(self, user: User, expertise_score: float, workload_score: float, required_expertise: List[str]) -> str:
+        """Generate human-readable reason for assignment recommendation"""
         reasons = []
         
-        # Expertise-based reasons
-        if scores['expertise_score'] >= 7:
-            reasons.append(f"Strong expertise match ({scores['expertise_score']:.1f}/10)")
-        elif scores['expertise_score'] >= 5:
-            reasons.append(f"Good expertise match ({scores['expertise_score']:.1f}/10)")
+        if expertise_score >= 8.0:
+            if required_expertise:
+                reasons.append(f"Strong expertise in {', '.join(required_expertise[:2])}")
+            else:
+                reasons.append("Excellent overall technical experience")
+        elif expertise_score >= 6.0:
+            reasons.append("Good technical match for this issue type")
         
-        # Workload-based reasons
-        if workload == 0:
-            reasons.append("Currently available")
-        elif workload <= 3:
-            reasons.append(f"Light workload ({workload} active issues)")
-        elif workload <= 6:
-            reasons.append(f"Moderate workload ({workload} active issues)")
+        if workload_score >= 8.0:
+            reasons.append("currently has light workload")
+        elif workload_score >= 6.0:
+            reasons.append("manageable current workload")
+        elif workload_score < 4.0:
+            reasons.append("high current workload but may be best technical fit")
         
-        # Performance-based reasons
-        if scores['performance_score'] >= 8:
-            reasons.append("Excellent track record")
-        elif scores['performance_score'] >= 6:
-            reasons.append("Good performance history")
+        if user.role == UserRole.ADMIN:
+            reasons.append("admin privileges for complex issues")
         
         if not reasons:
-            reasons.append("Best available option based on overall scoring")
+            reasons.append("balanced technical skills and availability")
         
-        return f"{user['name']} is recommended: {', '.join(reasons[:3])}"
+        return f"{user.full_name} recommended due to " + " and ".join(reasons)
     
     async def get_assignment_analytics(self, days: int = 30) -> Dict[str, Any]:
-        """Get analytics on assignment patterns and effectiveness"""
+        """Get assignment analytics and insights"""
         try:
             db = self.get_db()
+            cutoff_date = datetime.utcnow() - timedelta(days=days)
             
-            # Get assignments from the specified period
-            start_date = datetime.utcnow() - timedelta(days=days)
-            assignments = db.query(Issue).filter(
-                and_(
-                    Issue.assignee_id.isnot(None),
-                    Issue.created_at >= start_date
+            # Get issues from the period
+            issues = db.query(Issue).filter(Issue.created_at >= cutoff_date).all()
+            
+            if not issues:
+                return {'message': 'No issues in the specified period'}
+            
+            # Assignment statistics
+            assigned_count = sum(1 for i in issues if i.assignee_id)
+            unassigned_count = len(issues) - assigned_count
+            assignment_rate = (assigned_count / len(issues)) * 100 if issues else 0
+            
+            # Assignee workload distribution
+            assignee_workload = {}
+            for issue in issues:
+                if issue.assignee:
+                    name = issue.assignee.full_name
+                    if name not in assignee_workload:
+                        assignee_workload[name] = {'total': 0, 'by_severity': {}}
+                    
+                    assignee_workload[name]['total'] += 1
+                    severity = issue.severity.value
+                    assignee_workload[name]['by_severity'][severity] = assignee_workload[name]['by_severity'].get(severity, 0) + 1
+            
+            # Resolution time by assignee
+            assignee_performance = {}
+            for issue in issues:
+                if issue.assignee and issue.status == IssueStatus.DONE and issue.updated_at:
+                    name = issue.assignee.full_name
+                    if name not in assignee_performance:
+                        assignee_performance[name] = {'total_hours': 0, 'count': 0}
+                    
+                    resolution_hours = self.get_business_hours_between(issue.created_at, issue.updated_at)
+                    assignee_performance[name]['total_hours'] += resolution_hours
+                    assignee_performance[name]['count'] += 1
+            
+            # Calculate averages
+            for name, perf in assignee_performance.items():
+                if perf['count'] > 0:
+                    perf['avg_resolution_hours'] = round(perf['total_hours'] / perf['count'], 1)
+            
+            # Generate insights
+            insights = []
+            
+            if assignment_rate < 70:
+                insights.append(f"Low assignment rate ({assignment_rate:.1f}%) - consider implementing auto-assignment")
+            
+            if assignee_workload:
+                max_workload = max(data['total'] for data in assignee_workload.values())
+                min_workload = min(data['total'] for data in assignee_workload.values())
+                
+                if max_workload > min_workload * 2:
+                    insights.append("Significant workload imbalance detected across team members")
+            
+            # Identify top performers
+            if assignee_performance:
+                sorted_performers = sorted(
+                    assignee_performance.items(),
+                    key=lambda x: x[1].get('avg_resolution_hours', float('inf'))
                 )
-            ).all()
-            
-            if not assignments:
-                return {
-                    'total_assignments': 0,
-                    'message': 'No assignments found for the specified period'
-                }
-            
-            # Calculate analytics
-            total_assignments = len(assignments)
-            completed_assignments = len([i for i in assignments if i.status == IssueStatus.DONE])
-            
-            # Workload distribution
-            workload_distribution = {}
-            for issue in assignments:
-                assignee_name = issue.assignee.full_name if issue.assignee else 'Unassigned'
-                workload_distribution[assignee_name] = workload_distribution.get(assignee_name, 0) + 1
-            
-            # Average resolution times by severity
-            resolution_times = {severity.value: [] for severity in IssueSeverity}
-            for issue in assignments:
-                if issue.status == IssueStatus.DONE and issue.updated_at and issue.created_at:
-                    resolution_hours = (issue.updated_at - issue.created_at).total_seconds() / 3600
-                    resolution_times[issue.severity.value].append(resolution_hours)
-            
-            avg_resolution_times = {}
-            for severity, times in resolution_times.items():
-                if times:
-                    avg_resolution_times[severity] = sum(times) / len(times)
-                else:
-                    avg_resolution_times[severity] = 0
-            
-            # Success metrics
-            on_time_completions = 0
-            for issue in assignments:
-                if issue.status == IssueStatus.DONE and issue.updated_at and issue.created_at:
-                    resolution_hours = (issue.updated_at - issue.created_at).total_seconds() / 3600
-                    expected_hours = self._get_expected_resolution_time(issue.severity)
-                    if resolution_hours <= expected_hours:
-                        on_time_completions += 1
-            
-            completion_rate = (completed_assignments / total_assignments) * 100 if total_assignments > 0 else 0
-            on_time_rate = (on_time_completions / completed_assignments) * 100 if completed_assignments > 0 else 0
+                if sorted_performers and sorted_performers[0][1]['count'] >= 3:
+                    insights.append(f"{sorted_performers[0][0]} shows excellent resolution times")
             
             return {
-                'total_assignments': total_assignments,
-                'completed_assignments': completed_assignments,
-                'completion_rate': round(completion_rate, 1),
-                'on_time_completion_rate': round(on_time_rate, 1),
-                'workload_distribution': workload_distribution,
-                'avg_resolution_times_hours': avg_resolution_times,
-                'insights': self._generate_assignment_insights(
-                    total_assignments, completion_rate, on_time_rate, workload_distribution
-                ),
-                'period_days': days
+                'period_days': days,
+                'total_issues': len(issues),
+                'assignment_rate': round(assignment_rate, 1),
+                'assigned_issues': assigned_count,
+                'unassigned_issues': unassigned_count,
+                'assignee_workload': assignee_workload,
+                'assignee_performance': assignee_performance,
+                'insights': insights,
+                'generated_at': datetime.utcnow().isoformat()
             }
             
         except Exception as e:
-            logger.error(f"Error generating assignment analytics: {e}")
-            return {
-                'error': 'Failed to generate assignment analytics',
-                'details': str(e)
-            }
+            logger.error(f"Assignment analytics failed: {e}")
+            return {'error': str(e)}
         finally:
             db.close()
     
-    def _generate_assignment_insights(self, total: int, completion_rate: float, 
-                                    on_time_rate: float, workload_dist: Dict) -> List[str]:
-        """Generate insights from assignment analytics"""
-        insights = []
-        
-        # Volume insights
-        if total > 100:
-            insights.append(f"High assignment volume: {total} assignments in the period")
-        elif total < 20:
-            insights.append(f"Low assignment volume: {total} assignments in the period")
-        
-        # Performance insights
-        if completion_rate >= 90:
-            insights.append(f"Excellent completion rate: {completion_rate}%")
-        elif completion_rate < 70:
-            insights.append(f"Low completion rate: {completion_rate}% - consider workload review")
-        
-        if on_time_rate >= 80:
-            insights.append(f"Good on-time delivery: {on_time_rate}%")
-        elif on_time_rate < 60:
-            insights.append(f"On-time delivery needs improvement: {on_time_rate}%")
-        
-        # Workload distribution insights
-        if workload_dist:
-            max_workload = max(workload_dist.values())
-            min_workload = min(workload_dist.values())
-            if max_workload > min_workload * 2:
-                insights.append("Uneven workload distribution detected - consider rebalancing")
-        
-        return insights[:5]  # Return top 5 insights
-    
     async def suggest_workload_rebalancing(self) -> Dict[str, Any]:
-        """Suggest workload rebalancing opportunities"""
+        """Suggest workload rebalancing across team members"""
         try:
             db = self.get_db()
             
-            # Get all maintainers and admins with their current workloads
+            # Get all maintainers and admins with their current workload
             users = db.query(User).filter(
-                and_(
-                    User.role.in_([UserRole.MAINTAINER, UserRole.ADMIN]),
-                    User.is_active == True
-                )
+                User.role.in_([UserRole.ADMIN, UserRole.MAINTAINER])
             ).all()
             
+            if not users:
+                return {'message': 'No maintainers or admins found'}
+            
+            # Calculate current workloads
             user_workloads = []
             for user in users:
-                workload = self._get_user_workload(user.id)
+                active_issues = db.query(Issue).filter(
+                    and_(
+                        Issue.assignee_id == user.id,
+                        Issue.status != IssueStatus.DONE
+                    )
+                ).count()
+                
                 user_workloads.append({
                     'user_id': user.id,
-                    'name': user.full_name,
-                    'current_workload': workload,
-                    'capacity_status': self._assess_availability(user.id)
+                    'user_name': user.full_name,
+                    'role': user.role.value,
+                    'active_issues': active_issues
                 })
             
             # Sort by workload
-            user_workloads.sort(key=lambda x: x['current_workload'], reverse=True)
+            user_workloads.sort(key=lambda x: x['active_issues'])
             
             # Identify rebalancing opportunities
-            if len(user_workloads) < 2:
-                return {
-                    'rebalancing_needed': False,
-                    'message': 'Not enough team members for workload analysis'
-                }
-            
-            heaviest_loaded = user_workloads[0]
-            lightest_loaded = user_workloads[-1]
-            
-            workload_difference = heaviest_loaded['current_workload'] - lightest_loaded['current_workload']
-            
-            rebalancing_needed = workload_difference >= 4  # Significant difference threshold
-            
             suggestions = []
-            if rebalancing_needed:
-                # Get reassignable issues from overloaded users
-                overloaded_users = [u for u in user_workloads if u['current_workload'] > 8]
-                underloaded_users = [u for u in user_workloads if u['current_workload'] < 4]
-                
-                for overloaded in overloaded_users:
-                    for underloaded in underloaded_users:
-                        if overloaded['current_workload'] - underloaded['current_workload'] >= 3:
+            total_issues = sum(u['active_issues'] for u in user_workloads)
+            avg_workload = total_issues / len(user_workloads) if user_workloads else 0
+            
+            overloaded_users = [u for u in user_workloads if u['active_issues'] > avg_workload * 1.3]
+            underloaded_users = [u for u in user_workloads if u['active_issues'] < avg_workload * 0.7]
+            
+            for overloaded in overloaded_users:
+                for underloaded in underloaded_users:
+                    if overloaded['active_issues'] > underloaded['active_issues'] + 2:
+                        excess = overloaded['active_issues'] - int(avg_workload)
+                        transfer_count = min(excess // 2, 3)  # Transfer at most 3 issues
+                        
+                        if transfer_count > 0:
                             suggestions.append({
-                                'from_user': overloaded['name'],
-                                'to_user': underloaded['name'],
-                                'recommended_transfers': min(2, overloaded['current_workload'] // 2),
-                                'reason': f"Balance workload between {overloaded['current_workload']} and {underloaded['current_workload']} issues"
+                                'from_user': overloaded['user_name'],
+                                'to_user': underloaded['user_name'],
+                                'suggested_transfer_count': transfer_count,
+                                'reason': f"Reduce {overloaded['user_name']}'s workload from {overloaded['active_issues']} to {overloaded['active_issues'] - transfer_count}",
+                                'priority': 'high' if excess > 5 else 'medium'
                             })
             
+            # Calculate balance score
+            if user_workloads and len(user_workloads) > 1:
+                workload_variance = sum((u['active_issues'] - avg_workload) ** 2 for u in user_workloads) / len(user_workloads)
+                balance_score = max(0, 100 - (workload_variance * 10))  # Simple balance scoring
+            else:
+                balance_score = 100
+            
             return {
-                'rebalancing_needed': rebalancing_needed,
-                'workload_distribution': user_workloads,
-                'max_workload_difference': workload_difference,
-                'suggestions': suggestions[:3],  # Top 3 suggestions
-                'insights': [
-                    f"Workload range: {lightest_loaded['current_workload']}-{heaviest_loaded['current_workload']} issues",
-                    f"Average workload: {sum(u['current_workload'] for u in user_workloads) / len(user_workloads):.1f} issues"
-                ]
+                'current_balance_score': round(balance_score, 1),
+                'average_workload': round(avg_workload, 1),
+                'user_workloads': user_workloads,
+                'rebalancing_suggestions': suggestions[:5],  # Top 5 suggestions
+                'analysis_summary': {
+                    'total_active_issues': total_issues,
+                    'team_size': len(user_workloads),
+                    'overloaded_users': len(overloaded_users),
+                    'underloaded_users': len(underloaded_users)
+                },
+                'generated_at': datetime.utcnow().isoformat()
             }
             
         except Exception as e:
-            logger.error(f"Error suggesting workload rebalancing: {e}")
-            return {
-                'rebalancing_needed': False,
-                'error': 'Failed to analyze workload distribution',
-                'details': str(e)
-            }
+            logger.error(f"Workload rebalancing analysis failed: {e}")
+            return {'error': str(e)}
         finally:
             db.close()
+    
+    async def get_user_assignment_recommendations(self, user: User) -> Dict[str, Any]:
+        """Get assignment recommendations for a specific user"""
+        try:
+            db = self.get_db()
+            
+            # Get user's current workload
+            current_issues = db.query(Issue).filter(
+                and_(
+                    Issue.assignee_id == user.id,
+                    Issue.status != IssueStatus.DONE
+                )
+            ).count()
+            
+            # Get user's expertise areas based on resolved issues
+            resolved_issues = db.query(Issue).filter(
+                and_(
+                    Issue.assignee_id == user.id,
+                    Issue.status == IssueStatus.DONE
+                )
+            ).limit(50).all()
+            
+            expertise_analysis = self._analyze_user_expertise(resolved_issues)
+            workload_status = self._assess_workload_status(current_issues, user.role)
+            
+            # Get unassigned issues that match user's expertise
+            unassigned_issues = db.query(Issue).filter(
+                and_(
+                    Issue.assignee_id.is_(None),
+                    Issue.status != IssueStatus.DONE
+                )
+            ).all()
+            
+            matching_issues = []
+            for issue in unassigned_issues[:10]:  # Check top 10 unassigned
+                issue_text = f"{issue.title} {issue.description}".lower()
+                match_score = 0
+                
+                for expertise_area, score in expertise_analysis.items():
+                    if score > 0.3:  # User has good expertise in this area
+                        keywords = self.expertise_weights.get(expertise_area, [])
+                        if any(keyword in issue_text for keyword in keywords):
+                            match_score += score
+                
+                if match_score > 0.4:  # Good match threshold
+                    matching_issues.append({
+                        'issue_id': issue.id,
+                        'title': issue.title,
+                        'severity': issue.severity.value,
+                        'match_score': round(match_score, 2),
+                        'created_days_ago': (datetime.utcnow() - issue.created_at).days
+                    })
+            
+            # Sort by match score and urgency
+            matching_issues.sort(key=lambda x: (x['match_score'], -x['created_days_ago']), reverse=True)
+            
+            recommendations = {
+                'user_profile': {
+                    'name': user.full_name,
+                    'role': user.role.value,
+                    'current_workload': current_issues,
+                    'workload_status': workload_status
+                },
+                'expertise_areas': expertise_analysis,
+                'recommended_issues': matching_issues[:5],  # Top 5 matches
+                'capacity_assessment': {
+                    'can_take_new_issues': current_issues < self._get_capacity_threshold(user.role),
+                    'recommended_new_issues': max(0, self._get_capacity_threshold(user.role) - current_issues),
+                    'capacity_utilization': round((current_issues / self._get_capacity_threshold(user.role)) * 100, 1)
+                },
+                'generated_at': datetime.utcnow().isoformat()
+            }
+            
+            return recommendations
+            
+        except Exception as e:
+            logger.error(f"User assignment recommendations failed: {e}")
+            return {'error': str(e)}
+        finally:
+            db.close()
+    
+    def _analyze_user_expertise(self, resolved_issues: List[Issue]) -> Dict[str, float]:
+        """Analyze user's expertise based on resolved issues"""
+        expertise_scores = {}
+        
+        for category, keywords in self.expertise_weights.items():
+            score = 0
+            total_issues = len(resolved_issues)
+            
+            if total_issues == 0:
+                expertise_scores[category] = 0.0
+                continue
+            
+            for issue in resolved_issues:
+                text_content = f"{issue.title} {issue.description}".lower()
+                if any(keyword in text_content for keyword in keywords):
+                    score += 1
+            
+            expertise_scores[category] = round(score / total_issues, 2)
+        
+        return expertise_scores
+    
+    def _assess_workload_status(self, current_issues: int, role: UserRole) -> str:
+        """Assess user's workload status"""
+        thresholds = {
+            UserRole.ADMIN: 12,
+            UserRole.MAINTAINER: 10,
+            UserRole.REPORTER: 6
+        }
+        
+        threshold = thresholds.get(role, 8)
+        
+        if current_issues >= threshold * 1.2:
+            return 'overloaded'
+        elif current_issues >= threshold:
+            return 'at_capacity'
+        elif current_issues >= threshold * 0.5:
+            return 'moderate'
+        else:
+            return 'available'
+    
+    def _get_capacity_threshold(self, role: UserRole) -> int:
+        """Get capacity threshold for user role"""
+        thresholds = {
+            UserRole.ADMIN: 12,
+            UserRole.MAINTAINER: 10,
+            UserRole.REPORTER: 6
+        }
+        return thresholds.get(role, 8)
+    
+    async def predict_assignment_success(self, user_id: int, issue_data: Dict) -> Dict[str, Any]:
+        """Predict the success probability of assigning an issue to a specific user"""
+        try:
+            db = self.get_db()
+            user = db.query(User).filter(User.id == user_id).first()
+            
+            if not user:
+                return {'error': 'User not found'}
+            
+            # Calculate various success factors
+            expertise_match = await self._calculate_expertise_score(
+                user, self._identify_required_expertise(
+                    f"{issue_data.get('title', '')} {issue_data.get('description', '')}"
+                )
+            )
+            
+            workload_factor = await self._calculate_workload_score(user)
+            availability_factor = await self._calculate_availability_score(user)
+            
+            # Get user's historical success rate
+            resolved_issues = db.query(Issue).filter(
+                and_(
+                    Issue.assignee_id == user.id,
+                    Issue.status == IssueStatus.DONE
+                )
+            ).count()
+            
+            total_assigned = db.query(Issue).filter(Issue.assignee_id == user.id).count()
+            
+            historical_success_rate = (resolved_issues / total_assigned) if total_assigned > 0 else 0.7
+            
+            # Calculate overall success probability
+            success_probability = (
+                (expertise_match / 10) * 0.3 +
+                (workload_factor / 10) * 0.2 +
+                (availability_factor / 10) * 0.2 +
+                historical_success_rate * 0.3
+            )
+            
+            # Estimate resolution time based on user's history
+            if resolved_issues > 0:
+                user_resolved = db.query(Issue).filter(
+                    and_(
+                        Issue.assignee_id == user.id,
+                        Issue.status == IssueStatus.DONE,
+                        Issue.updated_at.isnot(None)
+                    )
+                ).limit(20).all()
+                
+                if user_resolved:
+                    avg_resolution_time = sum(
+                        self.get_business_hours_between(i.created_at, i.updated_at)
+                        for i in user_resolved
+                    ) / len(user_resolved)
+                else:
+                    avg_resolution_time = 24  # Default 1 day
+            else:
+                avg_resolution_time = 48  # Default 2 days for new users
+            
+            return {
+                'user_id': user_id,
+                'user_name': user.full_name,
+                'success_probability': round(success_probability, 3),
+                'estimated_resolution_hours': round(avg_resolution_time, 1),
+                'estimated_resolution_formatted': self.format_duration(avg_resolution_time),
+                'factors': {
+                    'expertise_match': round(expertise_match, 1),
+                    'workload_score': round(workload_factor, 1),
+                    'availability_score': round(availability_factor, 1),
+                    'historical_success_rate': round(historical_success_rate, 2)
+                },
+                'recommendation': 'highly_recommended' if success_probability > 0.8 else
+                                'recommended' if success_probability > 0.6 else
+                                'consider_alternatives' if success_probability > 0.4 else
+                                'not_recommended'
+            }
+            
+        except Exception as e:
+            logger.error(f"Assignment success prediction failed: {e}")
+            return {'error': str(e)}
+        finally:
+            db.close()
+    
+    def get_assignment_engine_stats(self) -> Dict[str, Any]:
+        """Get assignment engine statistics and health"""
+        return {
+            'service_status': 'active',
+            'expertise_areas': len(self.expertise_weights),
+            'total_keywords': sum(len(keywords) for keywords in self.expertise_weights.values()),
+            'capabilities': [
+                'Smart assignee suggestions',
+                'Workload analysis',
+                'Expertise matching',
+                'Assignment success prediction',
+                'Workload rebalancing'
+            ],
+            'last_updated': datetime.utcnow().isoformat()
+        }
