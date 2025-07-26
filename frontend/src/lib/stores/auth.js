@@ -1,11 +1,10 @@
+// frontend/src/lib/stores/auth.js - Fixed API URLs
 import { writable } from 'svelte/store';
 import { browser } from '$app/environment';
 import { goto } from '$app/navigation';
 
-// Use environment variable or default to current domain in production
-const API_URL = browser ? 
-    (window.location.origin.includes('localhost') ? 'http://localhost:8000/api' : '/api') : 
-    '/api';
+// Use relative URLs that work in both development and production
+const API_URL = '/api';
 
 function createAuthStore() {
 	const { subscribe, set, update } = writable({

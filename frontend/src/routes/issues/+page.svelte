@@ -1,3 +1,4 @@
+<!-- // frontend/src/routes/issues/+page.svelte - Fixed API URLs -->
 <script>
 	import { onMount } from 'svelte';
 	import { authStore } from '$lib/stores/auth';
@@ -37,7 +38,7 @@
 			params.append('skip', ((pagination.page - 1) * pagination.per_page).toString());
 			params.append('limit', pagination.per_page.toString());
 			
-			const response = await fetch(`http://localhost:8000/api/issues/?${params.toString()}`, {
+			const response = await fetch(`/api/issues/?${params.toString()}`, {
 				headers: {
 					'Content-Type': 'application/json',
 					...headers
@@ -72,7 +73,7 @@
 		try {
 			const headers = authStore.getAuthHeaders();
 			
-			const response = await fetch(`http://localhost:8000/api/issues/${issueId}`, {
+			const response = await fetch(`/api/issues/${issueId}`, {
 				method: 'PUT',
 				headers: {
 					'Content-Type': 'application/json',

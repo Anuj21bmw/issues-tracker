@@ -1,4 +1,4 @@
-// frontend/src/routes/dashboard/+page.svelte - Enhanced with AI
+// frontend/src/routes/dashboard/+page.svelte - Fixed with correct API URLs
 <script>
 	import { onMount } from 'svelte';
 	import { authStore } from '$lib/stores/auth';
@@ -431,3 +431,26 @@
 		</div>
 	{/if}
 </div>
+
+<style>
+	.ai-glow {
+		box-shadow: 0 0 20px rgba(147, 51, 234, 0.4);
+	}
+	
+	.ai-gradient {
+		background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+	}
+	
+	.ai-pulse {
+		animation: ai-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+	}
+	
+	@keyframes ai-pulse {
+		0%, 100% {
+			opacity: 1;
+		}
+		50% {
+			opacity: .7;
+		}
+	}
+</style>

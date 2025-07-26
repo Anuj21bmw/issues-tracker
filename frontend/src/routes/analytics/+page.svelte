@@ -1,3 +1,4 @@
+<!-- // frontend/src/routes/analytics/+page.svelte - Fixed API URLs -->
 <script>
 	import { onMount } from 'svelte';
 	import { authStore } from '$lib/stores/auth';
@@ -41,7 +42,7 @@
 			const headers = authStore.getAuthHeaders();
 			
 			// Load dashboard stats
-			const statsResponse = await fetch('http://localhost:8000/api/dashboard/stats', {
+			const statsResponse = await fetch('/api/dashboard/stats', {
 				headers: {
 					'Content-Type': 'application/json',
 					...headers
@@ -59,7 +60,7 @@
 			dashboardData = await statsResponse.json();
 
 			// Load daily stats for charts
-			const dailyResponse = await fetch('http://localhost:8000/api/dashboard/daily-stats?days=30', {
+			const dailyResponse = await fetch('/api/dashboard/daily-stats?days=30', {
 				headers: {
 					'Content-Type': 'application/json',
 					...headers
