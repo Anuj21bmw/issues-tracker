@@ -1,9 +1,13 @@
-# backend/app/main.py - Updated with AI integration
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+# =============================================
+# 1. MAIN APPLICATION FILE - backend/app/main.py
+# =============================================
+
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
 from starlette.responses import Response, FileResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 import structlog
 import time
 import os
@@ -11,7 +15,7 @@ import os
 from app.api.auth import router as auth_router
 from app.api.issues import router as issues_router
 from app.api.dashboard import router as dashboard_router
-from app.api.ai import router as ai_router  # New AI router
+from app.api.ai import router as ai_router
 from app.api.websocket import manager
 from app.database import engine, Base
 from app.core.config import settings
@@ -47,7 +51,7 @@ app = FastAPI(
     redoc_url="/api/redoc"
 )
 
-# CORS middleware with production settings
+# CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"] if settings.railway_environment == "development" else settings.allowed_origins,
@@ -55,6 +59,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Custom exception handler
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    return Response(
+        content=f'{{"error": "Not found", "detail": "Endpoint {request.url.path} not found"}}',
+        status_code=exc.status_code,
+        media_type="application/json"
+    )
 
 # Middleware for metrics and logging
 @app.middleware("http")
@@ -86,7 +99,7 @@ if os.path.exists("static"):
 app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
 app.include_router(issues_router, prefix="/api/issues", tags=["issues"])
 app.include_router(dashboard_router, prefix="/api/dashboard", tags=["dashboard"])
-app.include_router(ai_router, prefix="/api/ai", tags=["ai"])  # New AI endpoints
+app.include_router(ai_router, prefix="/api/ai", tags=["ai"])
 
 # WebSocket endpoint
 @app.websocket("/ws")
@@ -116,11 +129,9 @@ async def health_check():
         }
     }
     
-    # Check AI services health
     try:
         from app.ai.classifier import IssueClassifier
         classifier = IssueClassifier()
-        # Simple test classification
         test_result = await classifier.classify_issue("Test", "Test description")
         health_data["services"]["ai_classifier"] = "healthy"
     except Exception as e:
@@ -129,14 +140,12 @@ async def health_check():
     
     return health_data
 
-# Root endpoint - serve frontend in production
+# Root endpoint
 @app.get("/")
 async def read_root():
-    # In production, serve the built frontend
     if os.path.exists("static/index.html"):
         return FileResponse("static/index.html")
     
-    # In development, return API info with AI features
     return {
         "message": "AI-Enhanced Issues & Insights Tracker API", 
         "status": "running",
@@ -153,20 +162,7 @@ async def read_root():
         "environment": settings.railway_environment
     }
 
-# Catch-all route for SPA routing
-@app.get("/{path:path}")
-async def catch_all(path: str):
-    # Serve static files if they exist
-    if os.path.exists(f"static/{path}"):
-        return FileResponse(f"static/{path}")
-    
-    # For SPA routes, serve index.html
-    if os.path.exists("static/index.html") and not path.startswith("api/"):
-        return FileResponse("static/index.html")
-    
-    # Return 404 for API routes or if no static files
-    return {"error": "Not found"}, 404
-
+# Demo endpoint
 @app.get("/api/demo")
 def demo_endpoint():
     return {
@@ -194,3 +190,14 @@ def demo_endpoint():
         },
         "environment": settings.railway_environment
     }
+
+# Catch-all route for SPA routing
+@app.get("/{path:path}")
+async def catch_all(path: str):
+    if os.path.exists(f"static/{path}"):
+        return FileResponse(f"static/{path}")
+    
+    if os.path.exists("static/index.html") and not path.startswith("api/"):
+        return FileResponse("static/index.html")
+    
+    return {"error": "Not found"}, 404

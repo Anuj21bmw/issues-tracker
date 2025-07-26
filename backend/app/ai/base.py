@@ -1,49 +1,85 @@
-# backend/app/ai/base.py (Simplified Version)
+# backend/app/ai/base.py
 import logging
-from typing import Dict, List, Any, Optional
-from datetime import datetime, timedelta
-from sqlalchemy.orm import Session
-from app.database import SessionLocal
+from abc import ABC, abstractmethod
+from typing import Dict, Any, Optional
+import time
 
 logger = logging.getLogger(__name__)
 
-class AIBaseService:
-    """Base class for all AI services with common functionality"""
+class AIBaseService(ABC):
+    """Base class for all AI services"""
     
     def __init__(self):
-        # Initialize without OpenAI for now
-        self.openai_client = None
-        
-        # Rate limiting
-        self.last_api_call = {}
-        self.api_call_delays = {
-            'openai': 1.0,
-            'classification': 0.5,
-            'analysis': 2.0
+        self.service_name = self.__class__.__name__
+        self.is_healthy = True
+        self.last_health_check = None
+        self.performance_metrics = {
+            'total_requests': 0,
+            'successful_requests': 0,
+            'failed_requests': 0,
+            'average_response_time': 0.0,
+            'last_error': None
         }
-        
-        # Cache for frequent operations
-        self.cache = {}
-        self.cache_ttl = 300  # 5 minutes
-        
-        logger.info(f"Initialized {self.__class__.__name__}")
     
-    def get_db(self) -> Session:
-        """Get database session"""
-        return SessionLocal()
+    async def health_check(self) -> Dict[str, Any]:
+        """Perform health check for this service"""
+        try:
+            self.last_health_check = time.time()
+            
+            # Basic health check - can be overridden by subclasses
+            health_status = {
+                'service': self.service_name,
+                'status': 'healthy' if self.is_healthy else 'degraded',
+                'last_check': self.last_health_check,
+                'metrics': self.performance_metrics.copy()
+            }
+            
+            return health_status
+            
+        except Exception as e:
+            logger.error(f"Health check failed for {self.service_name}: {e}")
+            self.is_healthy = False
+            return {
+                'service': self.service_name,
+                'status': 'error',
+                'error': str(e),
+                'last_check': time.time()
+            }
     
-    async def _mock_ai_response(self, messages: List[Dict]) -> str:
-        """Mock AI response when no real AI service is available"""
-        return "This is a mock AI response for development."
-    
-    async def _rate_limit(self, service: str):
-        """Simple rate limiting"""
-        now = datetime.utcnow()
-        if service in self.last_api_call:
-            time_diff = (now - self.last_api_call[service]).total_seconds()
-            delay = self.api_call_delays.get(service, 1.0)
-            if time_diff < delay:
-                import asyncio
-                await asyncio.sleep(delay - time_diff)
+    def _record_request(self, success: bool = True, response_time: float = 0.0, error: Optional[str] = None):
+        """Record request metrics"""
+        self.performance_metrics['total_requests'] += 1
         
-        self.last_api_call[service] = now
+        if success:
+            self.performance_metrics['successful_requests'] += 1
+        else:
+            self.performance_metrics['failed_requests'] += 1
+            if error:
+                self.performance_metrics['last_error'] = error
+        
+        # Update average response time
+        if response_time > 0:
+            total_requests = self.performance_metrics['total_requests']
+            current_avg = self.performance_metrics['average_response_time']
+            self.performance_metrics['average_response_time'] = (
+                (current_avg * (total_requests - 1) + response_time) / total_requests
+            )
+    
+    def get_metrics(self) -> Dict[str, Any]:
+        """Get performance metrics for this service"""
+        return self.performance_metrics.copy()
+    
+    def reset_metrics(self):
+        """Reset performance metrics"""
+        self.performance_metrics = {
+            'total_requests': 0,
+            'successful_requests': 0,
+            'failed_requests': 0,
+            'average_response_time': 0.0,
+            'last_error': None
+        }
+    
+    def cleanup(self):
+        """Cleanup resources when service is shut down"""
+        logger.info(f"Cleaning up {self.service_name}")
+        # Override in subclasses if needed

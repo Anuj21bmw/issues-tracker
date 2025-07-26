@@ -1,116 +1,153 @@
 import { writable } from 'svelte/store';
 import { browser } from '$app/environment';
+import { WS_CONFIG } from './config.js';
 import { toastStore } from './toast.js';
 
-function createWebSocketStore() {
-	const { subscribe, set, update } = writable({
-		connected: false,
-		socket: null
-	});
+const createWebSocketStore = () => {
+    const { subscribe, set, update } = writable({
+        connected: false,
+        connecting: false,
+        messages: [],
+        error: null
+    });
 
-	let reconnectInterval;
-	let reconnectAttempts = 0;
-	const maxReconnectAttempts = 5;
+    let ws = null;
+    let reconnectAttempts = 0;
+    let reconnectTimeout = null;
 
-	return {
-		subscribe,
-		connect() {
-			if (!browser) return;
+    const connect = () => {
+        if (!browser || ws?.readyState === WebSocket.OPEN) return;
 
-			try {
-				const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-				const wsUrl = `${protocol}//${window.location.hostname}:8000/ws`;
-				const socket = new WebSocket(wsUrl);
+        update(state => ({ ...state, connecting: true, error: null }));
 
-				socket.onopen = () => {
-					set({ connected: true, socket });
-					reconnectAttempts = 0;
-					if (reconnectInterval) {
-						clearInterval(reconnectInterval);
-						reconnectInterval = null;
-					}
-				};
+        try {
+            ws = new WebSocket(WS_CONFIG.url);
 
-				socket.onmessage = (event) => {
-					try {
-						const message = JSON.parse(event.data);
-						handleMessage(message);
-					} catch (error) {
-						console.error('Error parsing WebSocket message:', error);
-					}
-				};
+            ws.onopen = () => {
+                console.log('WebSocket connected');
+                reconnectAttempts = 0;
+                update(state => ({
+                    ...state,
+                    connected: true,
+                    connecting: false,
+                    error: null
+                }));
+            };
 
-				socket.onclose = () => {
-					set({ connected: false, socket: null });
-					attemptReconnect();
-				};
+            ws.onmessage = (event) => {
+                try {
+                    const message = JSON.parse(event.data);
+                    update(state => ({
+                        ...state,
+                        messages: [...state.messages.slice(-99), message] // Keep last 100 messages
+                    }));
 
-				socket.onerror = (error) => {
-					console.error('WebSocket error:', error);
-				};
+                    // Handle specific message types
+                    handleMessage(message);
+                } catch (e) {
+                    console.error('Failed to parse WebSocket message:', e);
+                }
+            };
 
-			} catch (error) {
-				console.error('Failed to create WebSocket:', error);
-			}
-		},
+            ws.onclose = () => {
+                console.log('WebSocket disconnected');
+                update(state => ({
+                    ...state,
+                    connected: false,
+                    connecting: false
+                }));
 
-		disconnect() {
-			update(state => {
-				if (state.socket) {
-					state.socket.close();
-				}
-				return { connected: false, socket: null };
-			});
+                // Attempt to reconnect
+                if (reconnectAttempts < WS_CONFIG.maxReconnectAttempts) {
+                    reconnectAttempts++;
+                    reconnectTimeout = setTimeout(() => {
+                        console.log(`Reconnecting... (attempt ${reconnectAttempts})`);
+                        connect();
+                    }, WS_CONFIG.reconnectInterval);
+                }
+            };
 
-			if (reconnectInterval) {
-				clearInterval(reconnectInterval);
-				reconnectInterval = null;
-			}
-		}
-	};
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                update(state => ({
+                    ...state,
+                    error: 'WebSocket connection failed',
+                    connecting: false
+                }));
+            };
 
-	function handleMessage(message) {
-		switch (message.type) {
-			case 'issue_created':
-				toastStore.add({
-					type: 'info',
-					message: `New issue created: ${message.data.title}`,
-					duration: 4000
-				});
-				window.dispatchEvent(new CustomEvent('refresh-issues'));
-				break;
+        } catch (error) {
+            console.error('Failed to create WebSocket connection:', error);
+            update(state => ({
+                ...state,
+                error: error.message,
+                connecting: false
+            }));
+        }
+    };
 
-			case 'issue_status_changed':
-				toastStore.add({
-					type: 'info',
-					message: `Issue "${message.data.title}" status changed to ${message.data.new_status}`,
-					duration: 4000
-				});
-				window.dispatchEvent(new CustomEvent('refresh-issues'));
-				break;
+    const disconnect = () => {
+        if (reconnectTimeout) {
+            clearTimeout(reconnectTimeout);
+            reconnectTimeout = null;
+        }
 
-			default:
-				console.log('Unknown message type:', message.type);
-		}
-	}
+        if (ws) {
+            ws.close();
+            ws = null;
+        }
 
-	function attemptReconnect() {
-		if (reconnectAttempts >= maxReconnectAttempts) {
-			return;
-		}
+        set({
+            connected: false,
+            connecting: false,
+            messages: [],
+            error: null
+        });
+    };
 
-		if (!reconnectInterval) {
-			reconnectInterval = setInterval(() => {
-				if (reconnectAttempts < maxReconnectAttempts) {
-					reconnectAttempts++;
-					createWebSocketStore().connect();
-				} else {
-					clearInterval(reconnectInterval);
-					reconnectInterval = null;
-				}
-			}, 5000);
-		}
-	}
-}
+    const send = (message) => {
+        if (ws?.readyState === WebSocket.OPEN) {
+            ws.send(typeof message === 'string' ? message : JSON.stringify(message));
+            return true;
+        }
+        return false;
+    };
 
-export const websocketStore = createWebSocketStore();
+    const handleMessage = (message) => {
+        // Handle different message types
+        switch (message.type) {
+            case 'issue_created':
+                toastStore.success(`New issue created: ${message.data.title}`);
+                break;
+            case 'issue_updated':
+                toastStore.info(`Issue updated: ${message.data.title}`);
+                break;
+            case 'issue_assigned':
+                toastStore.info(`Issue assigned: ${message.data.title}`);
+                break;
+            case 'notification':
+                toastStore.add({
+                    type: message.data.type || 'info',
+                    message: message.data.message,
+                    duration: message.data.duration || 5000
+                });
+                break;
+            default:
+                console.log('Unhandled WebSocket message:', message);
+        }
+    };
+
+    // Auto-connect when store is created
+    if (browser) {
+        connect();
+    }
+
+    return {
+        subscribe,
+        connect,
+        disconnect,
+        send
+    };
+};
+
+export const wsStore = createWebSocketStore();

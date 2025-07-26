@@ -1,65 +1,76 @@
-# backend/app/ai/classifier.py (Simplified)
+# backend/app/ai/classifier.py
 import logging
-from typing import Dict, List, Any
+from typing import Dict, Any, List
 from app.ai.base import AIBaseService
 
 logger = logging.getLogger(__name__)
 
 class IssueClassifier(AIBaseService):
-    """AI-powered issue classification service"""
+    """AI-powered issue classifier"""
     
     def __init__(self):
         super().__init__()
-        self.severity_keywords = {
-            'CRITICAL': ['crash', 'down', 'broken', 'error', 'fatal', 'urgent'],
-            'HIGH': ['bug', 'issue', 'problem', 'fail', 'not working'],
-            'MEDIUM': ['improve', 'enhance', 'slow', 'performance'],
-            'LOW': ['cosmetic', 'minor', 'typo', 'suggestion']
+        self.categories = {
+            'bug': ['error', 'crash', 'broken', 'not working', 'fails', 'exception'],
+            'feature': ['enhancement', 'new', 'add', 'feature', 'improve'],
+            'ui': ['interface', 'design', 'layout', 'visual', 'display'],
+            'performance': ['slow', 'timeout', 'lag', 'performance', 'speed'],
+            'security': ['security', 'vulnerability', 'authentication', 'authorization']
         }
     
     async def classify_issue(self, title: str, description: str) -> Dict[str, Any]:
-        """Classify issue and suggest severity/tags"""
+        """Classify an issue based on title and description"""
         try:
             text = f"{title} {description}".lower()
             
-            # Simple keyword-based classification
-            severity_scores = {}
-            for severity, keywords in self.severity_keywords.items():
-                score = sum(1 for keyword in keywords if keyword in text)
-                severity_scores[severity] = score
+            # Determine severity
+            severity = 'LOW'
+            if any(word in text for word in ['critical', 'urgent', 'crash', 'down', 'broken']):
+                severity = 'CRITICAL'
+            elif any(word in text for word in ['important', 'high', 'major', 'serious']):
+                severity = 'HIGH'
+            elif any(word in text for word in ['medium', 'moderate', 'normal']):
+                severity = 'MEDIUM'
             
-            suggested_severity = max(severity_scores, key=severity_scores.get)
-            if severity_scores[suggested_severity] == 0:
-                suggested_severity = 'MEDIUM'
+            # Suggest tags
+            suggested_tags = []
+            for category, keywords in self.categories.items():
+                if any(keyword in text for keyword in keywords):
+                    suggested_tags.append(category)
             
-            confidence = min(severity_scores[suggested_severity] / 3.0, 1.0)
+            # Default tags if none found
+            if not suggested_tags:
+                suggested_tags = ['general']
+            
+            # Confidence score
+            confidence = 0.8 if suggested_tags else 0.5
             
             return {
-                'suggested_severity': suggested_severity,
+                'suggested_severity': severity,
+                'suggested_tags': suggested_tags,
                 'confidence': confidence,
-                'suggested_tags': ['general'],
-                'reasoning': f"Based on keyword analysis"
+                'reasoning': f"Classified based on keywords: {', '.join(suggested_tags)}"
             }
             
         except Exception as e:
             logger.error(f"Classification failed: {e}")
             return {
                 'suggested_severity': 'MEDIUM',
-                'confidence': 0.5,
-                'suggested_tags': [],
-                'reasoning': 'Default classification'
+                'suggested_tags': ['general'],
+                'confidence': 0.3,
+                'reasoning': 'Default classification due to processing error'
             }
     
     async def batch_classify_issues(self, issues_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Batch classify multiple issues"""
+        """Classify multiple issues in batch"""
         results = []
-        for issue_data in issues_data:
+        for issue in issues_data:
             classification = await self.classify_issue(
-                issue_data.get('title', ''),
-                issue_data.get('description', '')
+                issue.get('title', ''),
+                issue.get('description', '')
             )
             results.append({
-                'issue_id': issue_data.get('id'),
+                'issue_id': issue.get('id'),
                 'classification': classification
             })
         return results

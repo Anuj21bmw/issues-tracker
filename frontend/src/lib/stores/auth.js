@@ -1,178 +1,186 @@
-// frontend/src/lib/stores/auth.js - Fixed API URLs
-import { writable } from 'svelte/store';
+import { writable, derived } from 'svelte/store';
 import { browser } from '$app/environment';
 import { goto } from '$app/navigation';
+import { API_CONFIG, getApiUrl } from './config.js';
 
-// Use relative URLs that work in both development and production
-const API_URL = '/api';
+// Auth state
+const createAuthStore = () => {
+    const { subscribe, set, update } = writable({
+        user: null,
+        token: null,
+        isAuthenticated: false,
+        isLoading: false,
+        error: null
+    });
 
-function createAuthStore() {
-	const { subscribe, set, update } = writable({
-		user: null,
-		token: null,
-		isAuthenticated: false,
-		loading: false
-	});
+    // Load token from localStorage on initialization
+    if (browser) {
+        const savedToken = localStorage.getItem('auth_token');
+        const savedUser = localStorage.getItem('auth_user');
+        
+        if (savedToken && savedUser) {
+            try {
+                const user = JSON.parse(savedUser);
+                set({
+                    user,
+                    token: savedToken,
+                    isAuthenticated: true,
+                    isLoading: false,
+                    error: null
+                });
+            } catch (e) {
+                console.error('Failed to parse saved user data:', e);
+                localStorage.removeItem('auth_token');
+                localStorage.removeItem('auth_user');
+            }
+        }
+    }
 
-	return {
-		subscribe,
-		async login(email, password) {
-			update(state => ({ ...state, loading: true }));
-			
-			try {
-				const formData = new FormData();
-				formData.append('username', email);
-				formData.append('password', password);
+    return {
+        subscribe,
+        
+        async login(email, password) {
+            update(state => ({ ...state, isLoading: true, error: null }));
+            
+            try {
+                const formData = new FormData();
+                formData.append('username', email);
+                formData.append('password', password);
 
-				const response = await fetch(`${API_URL}/auth/login`, {
-					method: 'POST',
-					body: formData
-				});
+                const response = await fetch(getApiUrl(API_CONFIG.endpoints.auth.login), {
+                    method: 'POST',
+                    body: formData
+                });
 
-				const data = await response.json();
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({ detail: 'Login failed' }));
+                    throw new Error(errorData.detail || 'Login failed');
+                }
 
-				if (!response.ok) {
-					throw new Error(data.detail || 'Login failed');
-				}
+                const data = await response.json();
+                const token = data.access_token;
 
-				if (browser) {
-					localStorage.setItem('token', data.access_token);
-				}
+                // Get user data
+                const userResponse = await fetch(getApiUrl(API_CONFIG.endpoints.auth.me), {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
 
-				// Get user data
-				const userResponse = await fetch(`${API_URL}/auth/me`, {
-					headers: {
-						'Authorization': `Bearer ${data.access_token}`
-					}
-				});
+                if (!userResponse.ok) {
+                    throw new Error('Failed to get user data');
+                }
 
-				const userData = await userResponse.json();
+                const user = await userResponse.json();
 
-				if (userResponse.ok) {
-					set({
-						user: userData,
-						token: data.access_token,
-						isAuthenticated: true,
-						loading: false
-					});
+                // Save to localStorage
+                if (browser) {
+                    localStorage.setItem('auth_token', token);
+                    localStorage.setItem('auth_user', JSON.stringify(user));
+                }
 
-					// Redirect based on role
-					if (userData.role === 'ADMIN' || userData.role === 'MAINTAINER') {
-						goto('/dashboard');
-					} else {
-						goto('/issues');
-					}
-				} else {
-					throw new Error('Failed to get user data');
-				}
-			} catch (error) {
-				set({
-					user: null,
-					token: null,
-					isAuthenticated: false,
-					loading: false
-				});
-				throw error;
-			}
-		},
+                set({
+                    user,
+                    token,
+                    isAuthenticated: true,
+                    isLoading: false,
+                    error: null
+                });
 
-		async register(userData) {
-			update(state => ({ ...state, loading: true }));
-			
-			try {
-				const response = await fetch(`${API_URL}/auth/register`, {
-					method: 'POST',
-					headers: {
-						'Content-Type': 'application/json'
-					},
-					body: JSON.stringify(userData)
-				});
+                return { success: true, user };
 
-				const data = await response.json();
+            } catch (error) {
+                const errorMessage = error.message || 'Login failed';
+                update(state => ({
+                    ...state,
+                    isLoading: false,
+                    error: errorMessage
+                }));
+                return { success: false, error: errorMessage };
+            }
+        },
 
-				if (!response.ok) {
-					throw new Error(data.detail || 'Registration failed');
-				}
+        async register(userData) {
+            update(state => ({ ...state, isLoading: true, error: null }));
+            
+            try {
+                const response = await fetch(getApiUrl(API_CONFIG.endpoints.auth.register), {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(userData)
+                });
 
-				update(state => ({ ...state, loading: false }));
-				goto('/auth/login');
-			} catch (error) {
-				update(state => ({ ...state, loading: false }));
-				throw error;
-			}
-		},
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({ detail: 'Registration failed' }));
+                    throw new Error(errorData.detail || 'Registration failed');
+                }
 
-		async logout() {
-			if (browser) {
-				localStorage.removeItem('token');
-			}
-			
-			set({
-				user: null,
-				token: null,
-				isAuthenticated: false,
-				loading: false
-			});
+                const user = await response.json();
+                
+                update(state => ({ ...state, isLoading: false }));
+                
+                return { success: true, user };
 
-			goto('/auth/login');
-		},
+            } catch (error) {
+                const errorMessage = error.message || 'Registration failed';
+                update(state => ({
+                    ...state,
+                    isLoading: false,
+                    error: errorMessage
+                }));
+                return { success: false, error: errorMessage };
+            }
+        },
 
-		async checkAuth() {
-			if (!browser) return;
+        logout() {
+            if (browser) {
+                localStorage.removeItem('auth_token');
+                localStorage.removeItem('auth_user');
+            }
+            
+            set({
+                user: null,
+                token: null,
+                isAuthenticated: false,
+                isLoading: false,
+                error: null
+            });
+            
+            goto('/auth/login');
+        },
 
-			const token = localStorage.getItem('token');
-			if (!token) {
-				set({
-					user: null,
-					token: null,
-					isAuthenticated: false,
-					loading: false
-				});
-				return;
-			}
+        clearError() {
+            update(state => ({ ...state, error: null }));
+        },
 
-			try {
-				const response = await fetch(`${API_URL}/auth/me`, {
-					headers: {
-						'Authorization': `Bearer ${token}`
-					}
-				});
+        // Helper to get auth headers
+        getAuthHeaders() {
+            const state = this.get();
+            if (state.token) {
+                return {
+                    'Authorization': `Bearer ${state.token}`
+                };
+            }
+            return {};
+        },
 
-				if (response.ok) {
-					const userData = await response.json();
-					set({
-						user: userData,
-						token,
-						isAuthenticated: true,
-						loading: false
-					});
-				} else {
-					// Token is invalid, remove it
-					localStorage.removeItem('token');
-					set({
-						user: null,
-						token: null,
-						isAuthenticated: false,
-						loading: false
-					});
-				}
-			} catch (error) {
-				console.error('Auth check failed:', error);
-				localStorage.removeItem('token');
-				set({
-					user: null,
-					token: null,
-					isAuthenticated: false,
-					loading: false
-				});
-			}
-		},
-
-		getAuthHeaders() {
-			const token = browser ? localStorage.getItem('token') : null;
-			return token ? { 'Authorization': `Bearer ${token}` } : {};
-		}
-	};
-}
+        // Get current state
+        get() {
+            let currentState;
+            subscribe(state => currentState = state)();
+            return currentState;
+        }
+    };
+};
 
 export const authStore = createAuthStore();
+
+// Derived stores for convenience
+export const user = derived(authStore, $auth => $auth.user);
+export const isAuthenticated = derived(authStore, $auth => $auth.isAuthenticated);
+export const isLoading = derived(authStore, $auth => $auth.isLoading);
+export const authError = derived(authStore, $auth => $auth.error);
+

@@ -1,18 +1,43 @@
-// frontend/src/routes/dashboard/+page.svelte - Fixed with correct API URLs
+<!-- // frontend/src/routes/dashboard/+page.svelte  -->
+
+
 <script>
 	import { onMount } from 'svelte';
 	import { authStore } from '$lib/stores/auth';
-	import AIInsightsDashboard from '$lib/components/ai/AIInsightsDashboard.svelte';
+	import { toastStore } from '$lib/stores/toast';
 
 	let dashboardData = null;
 	let aiInsights = [];
 	let loading = true;
 	let error = null;
-	let showAIAnalysis = false;
+	let showAIPanel = false;
+	let analyticsData = null;
+	let dailyStats = [];
+
+	// Real-time updates
+	let wsConnection = null;
 
 	onMount(async () => {
 		await loadDashboardData();
 		await loadAIInsights();
+		await loadAnalytics();
+		await loadDailyStats();
+		connectWebSocket();
+		
+		// Auto-refresh every 30 seconds
+		const interval = setInterval(() => {
+			if (!loading) {
+				loadDashboardData();
+				loadAIInsights();
+			}
+		}, 30000);
+		
+		return () => {
+			clearInterval(interval);
+			if (wsConnection) {
+				wsConnection.close();
+			}
+		};
 	});
 
 	async function loadDashboardData() {
@@ -28,12 +53,17 @@
 			});
 
 			if (!response.ok) {
-				throw new Error('Failed to load dashboard data');
+				throw new Error(`HTTP ${response.status}: Failed to load dashboard data`);
 			}
 
-			dashboardData = await response.json();
+			const result = await response.json();
+			dashboardData = result.stats;
 		} catch (err) {
 			error = err.message;
+			toastStore.add({
+				type: 'error',
+				message: `Dashboard loading failed: ${err.message}`
+			});
 		} finally {
 			loading = false;
 		}
@@ -59,24 +89,117 @@
 		}
 	}
 
+	async function loadAnalytics() {
+		if ($authStore.user?.role !== 'ADMIN' && $authStore.user?.role !== 'MAINTAINER') {
+			return;
+		}
+
+		try {
+			const headers = authStore.getAuthHeaders();
+			
+			const response = await fetch('/api/dashboard/analytics', {
+				headers: {
+					'Content-Type': 'application/json',
+					...headers
+				}
+			});
+
+			if (response.ok) {
+				const result = await response.json();
+				analyticsData = result.analytics;
+			}
+		} catch (err) {
+			console.log('Analytics not available:', err);
+		}
+	}
+
+	async function loadDailyStats() {
+		if ($authStore.user?.role !== 'ADMIN' && $authStore.user?.role !== 'MAINTAINER') {
+			return;
+		}
+
+		try {
+			const headers = authStore.getAuthHeaders();
+			
+			const response = await fetch('/api/dashboard/daily-stats?days=14', {
+				headers: {
+					'Content-Type': 'application/json',
+					...headers
+				}
+			});
+
+			if (response.ok) {
+				const result = await response.json();
+				dailyStats = result.daily_stats || [];
+			}
+		} catch (err) {
+			console.log('Daily stats not available:', err);
+		}
+	}
+
+	function connectWebSocket() {
+		try {
+			const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+			const wsUrl = `${protocol}//${window.location.host}/ws`;
+			wsConnection = new WebSocket(wsUrl);
+			
+			wsConnection.onmessage = (event) => {
+				const data = JSON.parse(event.data);
+				if (data.type === 'issue_created' || data.type === 'issue_updated') {
+					// Refresh dashboard data on issue changes
+					loadDashboardData();
+					loadAIInsights();
+				}
+			};
+			
+			wsConnection.onerror = (error) => {
+				console.log('WebSocket error:', error);
+			};
+		} catch (err) {
+			console.log('WebSocket connection failed:', err);
+		}
+	}
+
 	function getSeverityClass(severity) {
 		const classes = {
-			LOW: 'severity-low',
-			MEDIUM: 'severity-medium',
-			HIGH: 'severity-high',
-			CRITICAL: 'severity-critical'
+			LOW: 'bg-green-100 text-green-800',
+			MEDIUM: 'bg-yellow-100 text-yellow-800',
+			HIGH: 'bg-orange-100 text-orange-800',
+			CRITICAL: 'bg-red-100 text-red-800'
 		};
-		return classes[severity] || 'badge';
+		return classes[severity] || 'bg-gray-100 text-gray-800';
 	}
 
 	function getStatusClass(status) {
 		const classes = {
-			OPEN: 'status-open',
-			TRIAGED: 'status-triaged',
-			IN_PROGRESS: 'status-in-progress',
-			DONE: 'status-done'
+			OPEN: 'bg-blue-100 text-blue-800',
+			TRIAGED: 'bg-purple-100 text-purple-800',
+			IN_PROGRESS: 'bg-orange-100 text-orange-800',
+			DONE: 'bg-green-100 text-green-800'
 		};
-		return classes[status] || 'badge';
+		return classes[status] || 'bg-gray-100 text-gray-800';
+	}
+
+	function getInsightIcon(type) {
+		const icons = {
+			warning: '⚠️',
+			success: '✅',
+			info: 'ℹ️',
+			prediction: '🔮',
+			error: '❌'
+		};
+		return icons[type] || 'ℹ️';
+	}
+
+	function getInsightClass(type) {
+		const classes = {
+			warning: 'border-orange-200 bg-orange-50',
+			success: 'border-green-200 bg-green-50',
+			info: 'border-blue-200 bg-blue-50',
+			prediction: 'border-purple-200 bg-purple-50',
+			error: 'border-red-200 bg-red-50'
+		};
+		return classes[type] || 'border-gray-200 bg-gray-50';
 	}
 
 	function formatDate(dateString) {
@@ -87,9 +210,17 @@
 		return new Date(dateString).toLocaleTimeString();
 	}
 
-	async function refreshData() {
-		await loadDashboardData();
-		await loadAIInsights();
+	async function refreshAllData() {
+		await Promise.all([
+			loadDashboardData(),
+			loadAIInsights(),
+			loadAnalytics(),
+			loadDailyStats()
+		]);
+		toastStore.add({
+			type: 'success',
+			message: 'Dashboard refreshed successfully'
+		});
 	}
 </script>
 
@@ -97,360 +228,321 @@
 	<title>AI-Enhanced Dashboard - Issues & Insights Tracker</title>
 </svelte:head>
 
-<div class="space-y-8">
-	<div class="flex items-center justify-between">
-		<div>
-			<h1 class="text-3xl font-bold text-gray-900">AI-Enhanced Dashboard</h1>
-			<p class="mt-2 text-gray-600">
-				Welcome back, {$authStore.user?.full_name}! Here's your intelligent overview.
-			</p>
-		</div>
-		<div class="flex items-center space-x-3">
-			<button 
-				on:click={() => showAIAnalysis = !showAIAnalysis}
-				class="btn-outline ai-glow"
-			>
-				🤖 {showAIAnalysis ? 'Hide' : 'Show'} AI Analysis
-			</button>
-			<button 
-				on:click={refreshData}
-				class="btn-outline"
-				disabled={loading}
-			>
-				🔄 Refresh
-			</button>
-		</div>
-	</div>
-
-	{#if loading}
-		<div class="flex items-center justify-center py-12">
-			<div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-			<span class="ml-3 text-gray-600">Loading intelligent dashboard...</span>
-		</div>
-	{:else if error}
-		<div class="card">
-			<div class="text-center">
-				<div class="text-red-500 text-6xl mb-4">⚠️</div>
-				<h3 class="text-lg font-medium text-gray-900 mb-2">Error Loading Dashboard</h3>
-				<p class="text-gray-600 mb-4">{error}</p>
-				<button on:click={refreshData} class="btn-primary">
-					Try Again
+<div class="min-h-screen bg-gray-50">
+	<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+		<!-- Header -->
+		<div class="flex items-center justify-between mb-8">
+			<div>
+				<h1 class="text-3xl font-bold text-gray-900">AI-Enhanced Dashboard</h1>
+				<p class="mt-2 text-gray-600">
+					Welcome back, {$authStore.user?.full_name}! Here's your intelligent overview.
+				</p>
+			</div>
+			<div class="flex items-center space-x-3">
+				<button 
+					on:click={() => showAIPanel = !showAIPanel}
+					class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-gradient-to-r from-purple-500 to-blue-600 hover:from-purple-600 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-all duration-200 shadow-lg"
+				>
+					🤖 {showAIPanel ? 'Hide' : 'Show'} AI Insights
+				</button>
+				<button 
+					on:click={refreshAllData}
+					class="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+				>
+					🔄 Refresh
 				</button>
 			</div>
 		</div>
-	{:else if dashboardData}
-		<!-- AI Alert Banner -->
-		{#if aiInsights.length > 0}
-			<div class="ai-gradient rounded-lg p-4 text-white">
-				<div class="flex items-center space-x-3">
-					<div class="text-2xl">🤖</div>
-					<div class="flex-1">
-						<h3 class="font-semibold">AI Assistant Alert</h3>
-						<p class="text-sm opacity-90">
-							{aiInsights[0].message}
-						</p>
-					</div>
-					<button 
-						on:click={() => showAIAnalysis = true}
-						class="bg-white/20 hover:bg-white/30 px-3 py-1 rounded text-sm transition-colors"
-					>
-						View Details
-					</button>
-				</div>
-			</div>
-		{/if}
 
-		<!-- Stats Grid with AI Enhancement -->
-		<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-			<div class="card ai-pulse">
-				<div class="flex items-center">
+		{#if loading}
+			<div class="flex items-center justify-center h-64">
+				<div class="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+				<span class="ml-3 text-gray-600">Loading dashboard data...</span>
+			</div>
+		{:else if error}
+			<div class="bg-red-50 border border-red-200 rounded-md p-4 mb-6">
+				<div class="flex">
 					<div class="flex-shrink-0">
-						<div class="text-3xl">🎫</div>
+						<svg class="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+							<path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+						</svg>
 					</div>
-					<div class="ml-5 w-0 flex-1">
-						<dl>
-							<dt class="text-sm font-medium text-gray-500 truncate">
-								Total Issues
-							</dt>
-							<dd class="text-lg font-medium text-gray-900">
-								{dashboardData.total_issues}
-							</dd>
-							<dd class="text-xs text-blue-600 font-medium">
-								🤖 AI: {dashboardData.total_issues > 50 ? 'High volume' : 'Normal range'}
-							</dd>
-						</dl>
+					<div class="ml-3">
+						<h3 class="text-sm font-medium text-red-800">Error loading dashboard</h3>
+						<p class="mt-1 text-sm text-red-700">{error}</p>
 					</div>
 				</div>
 			</div>
-
-			<div class="card">
-				<div class="flex items-center">
-					<div class="flex-shrink-0">
-						<div class="text-3xl">⏰</div>
-					</div>
-					<div class="ml-5 w-0 flex-1">
-						<dl>
-							<dt class="text-sm font-medium text-gray-500 truncate">
-								Open Issues
-							</dt>
-							<dd class="text-lg font-medium text-gray-900">
-								{dashboardData.open_issues}
-							</dd>
-							<dd class="text-xs text-purple-600 font-medium">
-								🔮 Predicted: +{Math.floor(dashboardData.open_issues * 0.1)} this week
-							</dd>
-						</dl>
-					</div>
-				</div>
-			</div>
-
-			<div class="card">
-				<div class="flex items-center">
-					<div class="flex-shrink-0">
-						<div class="text-3xl">🚀</div>
-					</div>
-					<div class="ml-5 w-0 flex-1">
-						<dl>
-							<dt class="text-sm font-medium text-gray-500 truncate">
-								In Progress
-							</dt>
-							<dd class="text-lg font-medium text-gray-900">
-								{dashboardData.in_progress_issues}
-							</dd>
-							<dd class="text-xs text-green-600 font-medium">
-								🎯 Avg completion: 2.3 days
-							</dd>
-						</dl>
-					</div>
-				</div>
-			</div>
-
-			<div class="card">
-				<div class="flex items-center">
-					<div class="flex-shrink-0">
-						<div class="text-3xl">✅</div>
-					</div>
-					<div class="ml-5 w-0 flex-1">
-						<dl>
-							<dt class="text-sm font-medium text-gray-500 truncate">
-								Completed
-							</dt>
-							<dd class="text-lg font-medium text-gray-900">
-								{dashboardData.done_issues}
-							</dd>
-							<dd class="text-xs text-indigo-600 font-medium">
-								📈 {dashboardData.total_issues > 0 ? Math.round((dashboardData.done_issues / dashboardData.total_issues) * 100) : 0}% completion rate
-							</dd>
-						</dl>
-					</div>
-				</div>
-			</div>
-		</div>
-
-		<!-- AI Insights Section -->
-		{#if showAIAnalysis}
-			<AIInsightsDashboard showFullAnalytics={true} />
-		{/if}
-
-		<!-- Charts and Activity -->
-		<div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-			<!-- Enhanced Issues by Severity -->
-			<div class="card">
-				<div class="flex items-center justify-between mb-4">
-					<h3 class="text-lg font-medium text-gray-900">
-						Issues by Severity
-					</h3>
-					<div class="text-sm text-purple-600 font-medium">
-						🤖 AI Enhanced
-					</div>
-				</div>
-				<div class="space-y-3">
-					{#each Object.entries(dashboardData.issues_by_severity) as [severity, count]}
-						<div class="flex items-center justify-between">
-							<div class="flex items-center">
-								<span class="{getSeverityClass(severity)}">{severity}</span>
-								{#if severity === 'CRITICAL' && count > 3}
-									<span class="ml-2 text-xs text-red-600 font-medium">🚨 Alert threshold</span>
-								{/if}
-							</div>
-							<div class="flex items-center space-x-2">
-								<span class="text-lg font-semibold text-gray-900">{count}</span>
-								<div class="w-16 bg-gray-200 rounded-full h-2">
-									<div 
-										class="h-2 rounded-full" 
-										style="width: {dashboardData.total_issues > 0 ? (count / Math.max(...Object.values(dashboardData.issues_by_severity))) * 100 : 0}%; background-color: {severity === 'CRITICAL' ? '#ef4444' : severity === 'HIGH' ? '#f97316' : severity === 'MEDIUM' ? '#f59e0b' : '#6b7280'}"
-									></div>
+		{:else if dashboardData}
+			<!-- AI Insights Panel -->
+			{#if showAIPanel && aiInsights.length > 0}
+				<div class="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-lg p-6 mb-8">
+					<h2 class="text-xl font-semibold text-gray-900 mb-4">🤖 AI Insights & Recommendations</h2>
+					<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+						{#each aiInsights as insight}
+							<div class="border rounded-lg p-4 {getInsightClass(insight.type)}">
+								<div class="flex items-start">
+									<span class="text-lg mr-2">{getInsightIcon(insight.type)}</span>
+									<div class="flex-1">
+										<p class="text-sm font-medium text-gray-900">{insight.message}</p>
+										<p class="text-xs text-gray-600 mt-1">{insight.recommendation}</p>
+									</div>
 								</div>
 							</div>
-						</div>
-					{/each}
-				</div>
-				
-				<!-- AI Recommendations -->
-				<div class="mt-4 p-3 bg-purple-50 rounded-lg border border-purple-200">
-					<div class="flex items-start space-x-2">
-						<span class="text-purple-600">🤖</span>
-						<div class="text-sm">
-							<div class="font-medium text-purple-900">AI Recommendation:</div>
-							<div class="text-purple-700">
-								{#if dashboardData.issues_by_severity.CRITICAL > 2}
-									Focus on critical issues first. Consider implementing escalation protocols.
-								{:else if dashboardData.issues_by_severity.HIGH > 5}
-									High priority issues need attention. Recommend load balancing across team.
-								{:else}
-									Issue distribution looks healthy. Maintain current workflow.
-								{/if}
-							</div>
-						</div>
+						{/each}
 					</div>
 				</div>
-			</div>
+			{/if}
 
-			<!-- Enhanced Recent Activity -->
-			<div class="card">
-				<div class="flex items-center justify-between mb-4">
-					<h3 class="text-lg font-medium text-gray-900">
-						Recent Activity
-					</h3>
-					<div class="text-sm text-blue-600 font-medium">
-						🧠 Smart Insights
-					</div>
-				</div>
-				<div class="space-y-4 max-h-64 overflow-y-auto">
-					{#each dashboardData.recent_activity as issue}
-						<div class="flex items-center space-x-4 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+			<!-- Stats Cards -->
+			<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+				<div class="bg-white overflow-hidden shadow rounded-lg">
+					<div class="p-5">
+						<div class="flex items-center">
 							<div class="flex-shrink-0">
-								<div class="text-lg">🎫</div>
-							</div>
-							<div class="flex-1 min-w-0">
-								<p class="text-sm font-medium text-gray-900 truncate">
-									{issue.title}
-								</p>
-								<div class="flex items-center space-x-2 mt-1">
-									<span class="{getSeverityClass(issue.severity)}">
-										{issue.severity}
-									</span>
-									<span class="{getStatusClass(issue.status)}">
-										{issue.status}
-									</span>
-									{#if issue.severity === 'CRITICAL'}
-										<span class="text-xs text-red-600 font-medium">⚡ Urgent</span>
-									{/if}
+								<div class="w-8 h-8 bg-blue-500 rounded-md flex items-center justify-center">
+									<span class="text-white text-sm font-medium">📊</span>
 								</div>
 							</div>
-							<div class="text-xs text-gray-500">
-								{formatTime(issue.updated_at || issue.created_at)}
+							<div class="ml-5 w-0 flex-1">
+								<dl>
+									<dt class="text-sm font-medium text-gray-500 truncate">Total Issues</dt>
+									<dd class="text-2xl font-semibold text-gray-900">{dashboardData.total_issues}</dd>
+								</dl>
 							</div>
 						</div>
-					{:else}
-						<div class="text-center py-8">
-							<div class="text-4xl mb-4">📝</div>
-							<p class="text-gray-500">No recent activity</p>
+					</div>
+				</div>
+
+				<div class="bg-white overflow-hidden shadow rounded-lg">
+					<div class="p-5">
+						<div class="flex items-center">
+							<div class="flex-shrink-0">
+								<div class="w-8 h-8 bg-orange-500 rounded-md flex items-center justify-center">
+									<span class="text-white text-sm font-medium">🔓</span>
+								</div>
+							</div>
+							<div class="ml-5 w-0 flex-1">
+								<dl>
+									<dt class="text-sm font-medium text-gray-500 truncate">Open Issues</dt>
+									<dd class="text-2xl font-semibold text-gray-900">{dashboardData.open_issues}</dd>
+								</dl>
+							</div>
 						</div>
-					{/each}
+					</div>
+				</div>
+
+				<div class="bg-white overflow-hidden shadow rounded-lg">
+					<div class="p-5">
+						<div class="flex items-center">
+							<div class="flex-shrink-0">
+								<div class="w-8 h-8 bg-yellow-500 rounded-md flex items-center justify-center">
+									<span class="text-white text-sm font-medium">⚡</span>
+								</div>
+							</div>
+							<div class="ml-5 w-0 flex-1">
+								<dl>
+									<dt class="text-sm font-medium text-gray-500 truncate">In Progress</dt>
+									<dd class="text-2xl font-semibold text-gray-900">{dashboardData.in_progress_issues}</dd>
+								</dl>
+							</div>
+						</div>
+					</div>
+				</div>
+
+				<div class="bg-white overflow-hidden shadow rounded-lg">
+					<div class="p-5">
+						<div class="flex items-center">
+							<div class="flex-shrink-0">
+								<div class="w-8 h-8 bg-green-500 rounded-md flex items-center justify-center">
+									<span class="text-white text-sm font-medium">✅</span>
+								</div>
+							</div>
+							<div class="ml-5 w-0 flex-1">
+								<dl>
+									<dt class="text-sm font-medium text-gray-500 truncate">Completed</dt>
+									<dd class="text-2xl font-semibold text-gray-900">{dashboardData.done_issues}</dd>
+								</dl>
+							</div>
+						</div>
+					</div>
 				</div>
 			</div>
-		</div>
 
-		<!-- AI-Powered Quick Actions -->
-		<div class="card">
-			<h3 class="text-lg font-medium text-gray-900 mb-4 flex items-center">
-				<span class="mr-2">🚀</span>
-				AI-Powered Quick Actions
-			</h3>
-			<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-				<a href="/issues/create" class="group relative overflow-hidden btn-primary text-center block hover:scale-105 transition-transform">
-					<div class="absolute inset-0 bg-gradient-to-r from-blue-400 to-purple-500 opacity-0 group-hover:opacity-20 transition-opacity"></div>
-					<div class="relative">
-						<div class="text-2xl mb-2">➕</div>
-						<div>Create Issue</div>
-						<div class="text-xs opacity-80">🤖 With AI classification</div>
-					</div>
-				</a>
-				
-				<button class="group relative overflow-hidden btn-outline text-center block hover:scale-105 transition-transform">
-					<div class="absolute inset-0 bg-gradient-to-r from-green-400 to-blue-500 opacity-0 group-hover:opacity-20 transition-opacity"></div>
-					<div class="relative">
-						<div class="text-2xl mb-2">🎯</div>
-						<div>Smart Assignment</div>
-						<div class="text-xs opacity-80">🤖 AI suggests best assignee</div>
-					</div>
-				</button>
-				
-				<button class="group relative overflow-hidden btn-outline text-center block hover:scale-105 transition-transform">
-					<div class="absolute inset-0 bg-gradient-to-r from-purple-400 to-pink-500 opacity-0 group-hover:opacity-20 transition-opacity"></div>
-					<div class="relative">
-						<div class="text-2xl mb-2">📊</div>
-						<div>Predictive Analytics</div>
-						<div class="text-xs opacity-80">🤖 Forecast trends</div>
-					</div>
-				</button>
-				
-				{#if $authStore.user?.role === 'ADMIN'}
-					<a href="/users" class="group relative overflow-hidden btn-outline text-center block hover:scale-105 transition-transform">
-						<div class="absolute inset-0 bg-gradient-to-r from-indigo-400 to-cyan-500 opacity-0 group-hover:opacity-20 transition-opacity"></div>
-						<div class="relative">
-							<div class="text-2xl mb-2">👥</div>
-							<div>Manage Users</div>
-							<div class="text-xs opacity-80">🤖 Smart permissions</div>
+			<!-- Performance Metrics -->
+			{#if dashboardData.performance}
+				<div class="bg-white shadow rounded-lg p-6 mb-8">
+					<h2 class="text-lg font-medium text-gray-900 mb-4">📈 Performance Metrics</h2>
+					<div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+						<div class="text-center">
+							<dt class="text-sm font-medium text-gray-500">This Week</dt>
+							<dd class="text-2xl font-semibold text-indigo-600">{dashboardData.performance.issues_this_week}</dd>
+							<dd class="text-xs text-gray-500">New Issues</dd>
 						</div>
-					</a>
-				{:else}
-					<a href="/issues" class="group relative overflow-hidden btn-outline text-center block hover:scale-105 transition-transform">
-						<div class="absolute inset-0 bg-gradient-to-r from-teal-400 to-green-500 opacity-0 group-hover:opacity-20 transition-opacity"></div>
-						<div class="relative">
-							<div class="text-2xl mb-2">📋</div>
-							<div>View All Issues</div>
-							<div class="text-xs opacity-80">🤖 Smart filtering</div>
+						<div class="text-center">
+							<dt class="text-sm font-medium text-gray-500">Resolved</dt>
+							<dd class="text-2xl font-semibold text-green-600">{dashboardData.performance.resolved_this_week}</dd>
+							<dd class="text-xs text-gray-500">This Week</dd>
 						</div>
-					</a>
-				{/if}
-			</div>
-		</div>
+						<div class="text-center">
+							<dt class="text-sm font-medium text-gray-500">Resolution Rate</dt>
+							<dd class="text-2xl font-semibold text-blue-600">{dashboardData.performance.resolution_rate.toFixed(1)}%</dd>
+							<dd class="text-xs text-gray-500">Success Rate</dd>
+						</div>
+						<div class="text-center">
+							<dt class="text-sm font-medium text-gray-500">Avg Response</dt>
+							<dd class="text-2xl font-semibold text-purple-600">{dashboardData.performance.avg_response_time}</dd>
+							<dd class="text-xs text-gray-500">Response Time</dd>
+						</div>
+					</div>
+				</div>
+			{/if}
 
-		<!-- AI Assistant Teaser -->
-		<div class="ai-gradient rounded-lg p-6 text-white relative overflow-hidden">
-			<div class="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16"></div>
-			<div class="absolute bottom-0 left-0 w-24 h-24 bg-white/10 rounded-full -ml-12 -mb-12"></div>
-			<div class="relative">
-				<div class="flex items-center justify-between">
-					<div>
-						<h3 class="text-xl font-bold mb-2">🤖 Meet Your AI Assistant</h3>
-						<p class="text-blue-100 mb-4">
-							Get instant insights, smart recommendations, and natural language query support.
-						</p>
-						<div class="flex flex-wrap gap-2 text-sm">
-							<span class="bg-white/20 px-2 py-1 rounded">"Show me critical issues"</span>
-							<span class="bg-white/20 px-2 py-1 rounded">"Who should fix this bug?"</span>
-							<span class="bg-white/20 px-2 py-1 rounded">"Team performance this week"</span>
+			<!-- Charts Section -->
+			{#if dailyStats.length > 0}
+				<div class="bg-white shadow rounded-lg p-6 mb-8">
+					<h2 class="text-lg font-medium text-gray-900 mb-4">📊 Daily Trends</h2>
+					<div class="h-64 flex items-end justify-between space-x-1">
+						{#each dailyStats as stat}
+							<div class="flex flex-col items-center flex-1">
+								<div class="w-full max-w-8 bg-gray-200 rounded-t" style="height: {Math.max(10, stat.created * 8)}px">
+									<div class="w-full bg-blue-500 rounded-t" style="height: {Math.max(5, stat.created * 8)}px" title="Created: {stat.created}"></div>
+								</div>
+								<div class="w-full max-w-8 bg-gray-200" style="height: {Math.max(10, stat.resolved * 8)}px">
+									<div class="w-full bg-green-500" style="height: {Math.max(5, stat.resolved * 8)}px" title="Resolved: {stat.resolved}"></div>
+								</div>
+								<span class="text-xs text-gray-500 mt-1 transform rotate-45 origin-left">{new Date(stat.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+							</div>
+						{/each}
+					</div>
+					<div class="flex justify-center mt-4 space-x-4 text-sm">
+						<div class="flex items-center">
+							<div class="w-3 h-3 bg-blue-500 rounded mr-1"></div>
+							<span>Created</span>
+						</div>
+						<div class="flex items-center">
+							<div class="w-3 h-3 bg-green-500 rounded mr-1"></div>
+							<span>Resolved</span>
 						</div>
 					</div>
-					<div class="text-6xl opacity-50">🤖</div>
+				</div>
+			{/if}
+
+			<!-- Two Column Layout -->
+			<div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+				<!-- Issues by Severity -->
+				<div class="bg-white shadow rounded-lg">
+					<div class="px-6 py-4 border-b border-gray-200">
+						<h2 class="text-lg font-medium text-gray-900">🚨 Issues by Severity</h2>
+					</div>
+					<div class="p-6">
+						<div class="space-y-4">
+							{#each Object.entries(dashboardData.issues_by_severity) as [severity, count]}
+								<div class="flex items-center justify-between">
+									<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {getSeverityClass(severity)}">
+										{severity}
+									</span>
+									<span class="text-sm font-medium text-gray-900">{count} issues</span>
+								</div>
+							{/each}
+						</div>
+					</div>
+				</div>
+
+				<!-- Recent Activity -->
+				<div class="bg-white shadow rounded-lg">
+					<div class="px-6 py-4 border-b border-gray-200">
+						<h2 class="text-lg font-medium text-gray-900">🕒 Recent Activity</h2>
+					</div>
+					<div class="divide-y divide-gray-200">
+						{#each dashboardData.recent_activity.slice(0, 8) as issue}
+							<div class="px-6 py-4">
+								<div class="flex items-center justify-between">
+									<div class="flex-1 min-w-0">
+										<p class="text-sm font-medium text-gray-900 truncate">
+											<a href="/issues/{issue.id}" class="hover:text-indigo-600">
+												#{issue.id} {issue.title}
+											</a>
+										</p>
+										<p class="text-sm text-gray-500">
+											by {issue.reporter} • {formatDate(issue.created_at)}
+										</p>
+									</div>
+									<div class="flex items-center space-x-2 ml-4">
+										<span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium {getSeverityClass(issue.severity)}">
+											{issue.severity}
+										</span>
+										<span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium {getStatusClass(issue.status)}">
+											{issue.status}
+										</span>
+									</div>
+								</div>
+							</div>
+						{/each}
+					</div>
+					<div class="px-6 py-3 bg-gray-50 text-center">
+						<a href="/issues" class="text-sm font-medium text-indigo-600 hover:text-indigo-500">
+							View all issues →
+						</a>
+					</div>
 				</div>
 			</div>
-		</div>
-	{/if}
+
+			<!-- Team Analytics (Admin/Maintainer only) -->
+			{#if analyticsData && ($authStore.user?.role === 'ADMIN' || $authStore.user?.role === 'MAINTAINER')}
+				<div class="mt-8 bg-white shadow rounded-lg">
+					<div class="px-6 py-4 border-b border-gray-200">
+						<h2 class="text-lg font-medium text-gray-900">👥 Team Performance</h2>
+					</div>
+					<div class="p-6">
+						{#if analyticsData.team_performance && analyticsData.team_performance.length > 0}
+							<div class="overflow-x-auto">
+								<table class="min-w-full divide-y divide-gray-200">
+									<thead class="bg-gray-50">
+										<tr>
+											<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Team Member</th>
+											<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assigned</th>
+											<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Resolved</th>
+											<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Success Rate</th>
+										</tr>
+									</thead>
+									<tbody class="bg-white divide-y divide-gray-200">
+										{#each analyticsData.team_performance as member}
+											<tr>
+												<td class="px-6 py-4 whitespace-nowrap">
+													<div>
+														<div class="text-sm font-medium text-gray-900">{member.name}</div>
+														<div class="text-sm text-gray-500">{member.email}</div>
+													</div>
+												</td>
+												<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{member.total_assigned}</td>
+												<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{member.resolved}</td>
+												<td class="px-6 py-4 whitespace-nowrap">
+													<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {member.resolution_rate >= 80 ? 'bg-green-100 text-green-800' : member.resolution_rate >= 60 ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'}">
+														{member.resolution_rate.toFixed(1)}%
+													</span>
+												</td>
+											</tr>
+										{/each}
+									</tbody>
+								</table>
+							</div>
+						{:else}
+							<p class="text-gray-500 text-center py-4">No team performance data available</p>
+						{/if}
+					</div>
+				</div>
+			{/if}
+		{/if}
+	</div>
 </div>
 
 <style>
 	.ai-glow {
-		box-shadow: 0 0 20px rgba(147, 51, 234, 0.4);
+		box-shadow: 0 0 20px rgba(139, 92, 246, 0.3);
 	}
 	
-	.ai-gradient {
-		background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-	}
-	
-	.ai-pulse {
-		animation: ai-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-	}
-	
-	@keyframes ai-pulse {
-		0%, 100% {
-			opacity: 1;
-		}
-		50% {
-			opacity: .7;
-		}
+	.ai-glow:hover {
+		box-shadow: 0 0 25px rgba(139, 92, 246, 0.5);
 	}
 </style>
