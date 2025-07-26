@@ -1,4 +1,4 @@
-// frontend/src/routes/+layout.svelte - Updated with AI components
+<!-- frontend/src/routes/+layout.svelte - Updated with AI components -->
 <script>
 	import '../app.css';
 	import { onMount } from 'svelte';
