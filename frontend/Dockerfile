@@ -1,4 +1,4 @@
-FROM node:18-alpine
+FROM node:18-alpine as builder
 
 WORKDIR /app
 
@@ -14,9 +14,7 @@ COPY . .
 # Build the app
 RUN npm run build
 
-# Expose port
-EXPOSE 3000
-
+# Production stage
 FROM nginx:alpine
 
 # Copy built files
@@ -27,9 +25,5 @@ COPY nginx.conf /etc/nginx/nginx.conf
 
 # Expose port 80
 EXPOSE 80
-
-
-# # Start the application
-# CMD ["npm", "run", "preview", "--", "--host", "0.0.0.0", "--port", "3000"]
 
 CMD ["nginx", "-g", "daemon off;"]
