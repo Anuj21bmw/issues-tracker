@@ -1,3 +1,4 @@
+<!-- src/routes/+page.svelte -->
 <script>
 	import { onMount } from 'svelte';
 	import { authStore } from '$lib/stores/auth';
@@ -7,7 +8,7 @@
 
 	onMount(() => {
 		mounted = true;
-		// If user is already authenticated, redirect to dashboard
+		// If user is already authenticated, redirect to appropriate page
 		if ($authStore.isAuthenticated) {
 			if ($authStore.user?.role === 'ADMIN' || $authStore.user?.role === 'MAINTAINER') {
 				goto('/dashboard');
@@ -16,6 +17,14 @@
 			}
 		}
 	});
+
+	function navigateToLogin() {
+		goto('/auth/login');
+	}
+
+	function navigateToRegister() {
+		goto('/auth/register');
+	}
 </script>
 
 <svelte:head>
@@ -35,12 +44,18 @@
 					<span class="text-xl font-bold text-gray-900">Issues Tracker</span>
 				</div>
 				<div class="flex items-center space-x-4">
-					<a href="/auth/login" class="text-gray-600 hover:text-gray-900 font-medium">
+					<button 
+						on:click={navigateToLogin}
+						class="text-gray-600 hover:text-gray-900 font-medium transition-colors"
+					>
 						Sign In
-					</a>
-					<a href="/auth/login" class="btn-primary">
+					</button>
+					<button 
+						on:click={navigateToLogin}
+						class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+					>
 						Get Started
-					</a>
+					</button>
 				</div>
 			</div>
 		</div>
@@ -59,77 +74,154 @@
 					Built for teams that value productivity and insights.
 				</p>
 				<div class="flex flex-col sm:flex-row gap-4 justify-center">
-					<a href="/auth/login" class="btn-primary text-lg px-8 py-3">
-						Start Tracking Issues
-					</a>
-					<a href="#features" class="btn-outline text-lg px-8 py-3">
-						Learn More
-					</a>
+					<button 
+						on:click={navigateToLogin}
+						class="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-lg text-lg font-semibold transition-all transform hover:scale-105"
+					>
+						Try Demo Accounts
+					</button>
+					<button 
+						on:click={navigateToRegister}
+						class="bg-white hover:bg-gray-50 text-gray-900 px-8 py-4 rounded-lg text-lg font-semibold border border-gray-300 transition-all"
+					>
+						Create Account
+					</button>
 				</div>
 			</div>
 		</div>
 	</div>
 
 	<!-- Features Section -->
-	<div id="features" class="py-20 bg-white">
+	<div class="py-20 bg-white">
 		<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 			<div class="text-center mb-16">
-				<h2 class="text-4xl font-bold text-gray-900 mb-4">
-					Everything You Need
+				<h2 class="text-3xl font-bold text-gray-900 mb-4">
+					Everything you need to manage issues effectively
 				</h2>
 				<p class="text-xl text-gray-600">
 					Powerful features designed for modern teams
 				</p>
 			</div>
 
-			<div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+			<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+				<!-- Feature 1 -->
 				<div class="text-center p-6">
-					<div class="text-5xl mb-4">🎫</div>
-					<h3 class="text-xl font-semibold text-gray-900 mb-2">Issue Tracking</h3>
+					<div class="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mx-auto mb-4">
+						<span class="text-2xl">🤖</span>
+					</div>
+					<h3 class="text-xl font-semibold text-gray-900 mb-2">AI-Powered Insights</h3>
 					<p class="text-gray-600">
-						Create, assign, and track issues with detailed information and file attachments.
+						Get intelligent suggestions for issue classification, priority, and resolution strategies powered by advanced AI.
 					</p>
 				</div>
 
+				<!-- Feature 2 -->
 				<div class="text-center p-6">
-					<div class="text-5xl mb-4">📊</div>
-					<h3 class="text-xl font-semibold text-gray-900 mb-2">Analytics & Insights</h3>
+					<div class="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mx-auto mb-4">
+						<span class="text-2xl">⚡</span>
+					</div>
+					<h3 class="text-xl font-semibold text-gray-900 mb-2">Real-time Collaboration</h3>
 					<p class="text-gray-600">
-						Get detailed analytics and insights to improve your team's productivity.
+						Work together seamlessly with real-time updates, notifications, and collaborative tools for your entire team.
 					</p>
 				</div>
 
+				<!-- Feature 3 -->
 				<div class="text-center p-6">
-					<div class="text-5xl mb-4">👥</div>
-					<h3 class="text-xl font-semibold text-gray-900 mb-2">Team Collaboration</h3>
+					<div class="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mx-auto mb-4">
+						<span class="text-2xl">📊</span>
+					</div>
+					<h3 class="text-xl font-semibold text-gray-900 mb-2">Advanced Analytics</h3>
 					<p class="text-gray-600">
-						Role-based access control and real-time updates keep everyone in sync.
+						Gain deep insights into your team's performance with comprehensive analytics and customizable dashboards.
 					</p>
 				</div>
 
+				<!-- Feature 4 -->
 				<div class="text-center p-6">
-					<div class="text-5xl mb-4">⚡</div>
-					<h3 class="text-xl font-semibold text-gray-900 mb-2">Real-time Updates</h3>
+					<div class="w-12 h-12 bg-yellow-100 rounded-lg flex items-center justify-center mx-auto mb-4">
+						<span class="text-2xl">🔐</span>
+					</div>
+					<h3 class="text-xl font-semibold text-gray-900 mb-2">Role-based Access</h3>
 					<p class="text-gray-600">
-						Get instant notifications when issues are updated or status changes.
+						Secure your workflow with granular permissions and role-based access controls for admins, maintainers, and reporters.
 					</p>
 				</div>
 
+				<!-- Feature 5 -->
 				<div class="text-center p-6">
-					<div class="text-5xl mb-4">🔒</div>
-					<h3 class="text-xl font-semibold text-gray-900 mb-2">Secure & Reliable</h3>
-					<p class="text-gray-600">
-						Enterprise-grade security with role-based permissions and data protection.
-					</p>
-				</div>
-
-				<div class="text-center p-6">
-					<div class="text-5xl mb-4">📱</div>
+					<div class="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center mx-auto mb-4">
+						<span class="text-2xl">📱</span>
+					</div>
 					<h3 class="text-xl font-semibold text-gray-900 mb-2">Mobile Friendly</h3>
 					<p class="text-gray-600">
-						Access your issues from anywhere with our responsive design.
+						Access your issues anywhere with our responsive design that works perfectly on desktop, tablet, and mobile.
 					</p>
 				</div>
+
+				<!-- Feature 6 -->
+				<div class="text-center p-6">
+					<div class="w-12 h-12 bg-indigo-100 rounded-lg flex items-center justify-center mx-auto mb-4">
+						<span class="text-2xl">🎯</span>
+					</div>
+					<h3 class="text-xl font-semibold text-gray-900 mb-2">Smart Prioritization</h3>
+					<p class="text-gray-600">
+						Automatically prioritize issues based on severity, impact, and urgency to focus on what matters most.
+					</p>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<!-- Demo Section -->
+	<div class="py-20 bg-gray-50">
+		<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+			<div class="text-center">
+				<h2 class="text-3xl font-bold text-gray-900 mb-4">
+					Try it out with demo accounts
+				</h2>
+				<p class="text-xl text-gray-600 mb-8">
+					Experience the full power of our platform with pre-configured demo accounts
+				</p>
+				
+				<div class="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto mb-8">
+					<!-- Admin Demo -->
+					<div class="bg-white p-6 rounded-lg shadow-md">
+						<div class="text-2xl mb-3">👑</div>
+						<h3 class="text-lg font-semibold text-gray-900 mb-2">Admin Account</h3>
+						<p class="text-gray-600 text-sm mb-3">Full access to all features, analytics, and user management</p>
+						<div class="text-xs text-gray-500">
+							admin@example.com
+						</div>
+					</div>
+
+					<!-- Maintainer Demo -->
+					<div class="bg-white p-6 rounded-lg shadow-md">
+						<div class="text-2xl mb-3">🔧</div>
+						<h3 class="text-lg font-semibold text-gray-900 mb-2">Maintainer Account</h3>
+						<p class="text-gray-600 text-sm mb-3">Manage and resolve issues, assign tasks, update statuses</p>
+						<div class="text-xs text-gray-500">
+							maintainer@example.com
+						</div>
+					</div>
+
+					<!-- Reporter Demo -->
+					<div class="bg-white p-6 rounded-lg shadow-md">
+						<div class="text-2xl mb-3">📝</div>
+						<h3 class="text-lg font-semibold text-gray-900 mb-2">Reporter Account</h3>
+						<p class="text-gray-600 text-sm mb-3">Create new issues, track progress, add comments</p>
+						<div class="text-xs text-gray-500">
+							reporter@example.com
+						</div>
+					</div>
+				</div>
+
+				<button 
+					on:click={navigateToLogin}
+					class="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-lg text-lg font-semibold transition-all transform hover:scale-105"
+				>
+					Try Demo Now
+				</button>
 			</div>
 		</div>
 	</div>
@@ -137,30 +229,55 @@
 	<!-- CTA Section -->
 	<div class="py-20 bg-blue-600">
 		<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-			<h2 class="text-4xl font-bold text-white mb-4">
-				Ready to Get Started?
+			<h2 class="text-3xl font-bold text-white mb-4">
+				Ready to get started?
 			</h2>
 			<p class="text-xl text-blue-100 mb-8">
-				Join teams already using Issues Tracker to streamline their workflow.
+				Join thousands of teams who trust our platform for their issue management
 			</p>
-			<a href="/auth/login" class="bg-white text-blue-600 hover:bg-gray-100 font-semibold px-8 py-3 rounded-lg transition-colors inline-block">
-				Start Your Free Trial
-			</a>
+			<div class="flex flex-col sm:flex-row gap-4 justify-center">
+				<button 
+					on:click={navigateToRegister}
+					class="bg-white hover:bg-gray-100 text-blue-600 px-8 py-4 rounded-lg text-lg font-semibold transition-all"
+				>
+					Create Free Account
+				</button>
+				<button 
+					on:click={navigateToLogin}
+					class="bg-blue-500 hover:bg-blue-400 text-white px-8 py-4 rounded-lg text-lg font-semibold transition-all"
+				>
+					Try Demo
+				</button>
+			</div>
 		</div>
 	</div>
 
 	<!-- Footer -->
 	<footer class="bg-gray-900 text-white py-12">
 		<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-			<div class="flex flex-col md:flex-row justify-between items-center">
-				<div class="flex items-center mb-4 md:mb-0">
+			<div class="text-center">
+				<div class="flex items-center justify-center mb-4">
 					<div class="h-8 w-8 bg-blue-600 rounded-lg flex items-center justify-center mr-3">
 						<span class="text-white font-bold text-sm">IT</span>
 					</div>
 					<span class="text-xl font-bold">Issues Tracker</span>
 				</div>
-				<div class="text-gray-400">
-					© 2024 Issues Tracker. Built for productivity.
+				<p class="text-gray-400 mb-6">
+					Professional issue management for modern teams
+				</p>
+				<div class="flex justify-center space-x-8">
+					<button 
+						on:click={navigateToLogin}
+						class="text-gray-400 hover:text-white transition-colors"
+					>
+						Sign In
+					</button>
+					<button 
+						on:click={navigateToRegister}
+						class="text-gray-400 hover:text-white transition-colors"
+					>
+						Register
+					</button>
 				</div>
 			</div>
 		</div>

@@ -1,4 +1,4 @@
-// src/lib/stores/auth.js
+// Replace: frontend/src/lib/stores/auth.js
 import { writable, derived } from 'svelte/store';
 import { browser } from '$app/environment';
 import { goto } from '$app/navigation';
@@ -39,46 +39,67 @@ const createAuthStore = () => {
         }
     }
 
-    return {
+    const authStore = {
         subscribe,
         
         async login(email, password) {
             update(state => ({ ...state, isLoading: true, error: null }));
             
             try {
+                // Create form data for login
                 const formData = new FormData();
                 formData.append('username', email);
                 formData.append('password', password);
 
+                console.log('Attempting login for:', email);
+                
                 const response = await fetch(getApiUrl('/api/auth/login'), {
                     method: 'POST',
                     body: formData
                 });
+
+                console.log('Login response status:', response.status);
 
                 if (!response.ok) {
                     let errorMessage = 'Login failed';
                     try {
                         const errorData = await response.json();
                         errorMessage = errorData.detail || errorMessage;
+                        console.error('Login error:', errorData);
                     } catch (e) {
-                        // If we can't parse the error, use the default message
+                        console.error('Failed to parse error response:', e);
                     }
-                    throw new Error(errorMessage);
+                    update(state => ({
+                        ...state,
+                        isLoading: false,
+                        error: errorMessage
+                    }));
+                    return { success: false, error: errorMessage };
                 }
 
                 const data = await response.json();
+                console.log('Login response data:', data);
                 
-                // Handle different response formats
-                let accessToken, user;
-                if (data.access_token) {
-                    accessToken = data.access_token;
-                    user = data.user || { email, full_name: email };
-                } else if (data.token) {
-                    accessToken = data.token;
-                    user = data.user || { email, full_name: email };
-                } else {
-                    throw new Error('Invalid response format');
+                // Get access token
+                const accessToken = data.access_token;
+                if (!accessToken) {
+                    throw new Error('No access token received');
                 }
+
+                // Get user info from /me endpoint
+                console.log('Fetching user info...');
+                const userResponse = await fetch(getApiUrl('/api/auth/me'), {
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`
+                    }
+                });
+
+                if (!userResponse.ok) {
+                    throw new Error('Failed to get user information');
+                }
+
+                const user = await userResponse.json();
+                console.log('User info:', user);
 
                 // Save to localStorage
                 if (browser) {
@@ -94,11 +115,10 @@ const createAuthStore = () => {
                     error: null
                 });
 
-                // Navigate to dashboard
-                await goto('/dashboard');
-                return { success: true };
+                return { success: true, user };
 
             } catch (error) {
+                console.error('Login error:', error);
                 const errorMessage = error.message || 'Login failed';
                 update(state => ({
                     ...state,
@@ -129,28 +149,23 @@ const createAuthStore = () => {
                     } catch (e) {
                         // Use default message if parsing fails
                     }
-                    throw new Error(errorMessage);
+                    update(state => ({
+                        ...state,
+                        isLoading: false,
+                        error: errorMessage
+                    }));
+                    return { success: false, error: errorMessage };
                 }
 
-                const data = await response.json();
-                const { access_token, user } = data;
-
-                // Save to localStorage
-                if (browser) {
-                    localStorage.setItem('auth_token', access_token);
-                    localStorage.setItem('auth_user', JSON.stringify(user));
-                }
-
-                set({
-                    user,
-                    token: access_token,
-                    isAuthenticated: true,
+                const user = await response.json();
+                
+                update(state => ({
+                    ...state,
                     isLoading: false,
                     error: null
-                });
+                }));
 
-                await goto('/dashboard');
-                return { success: true };
+                return { success: true, user };
 
             } catch (error) {
                 const errorMessage = error.message || 'Registration failed';
@@ -192,11 +207,11 @@ const createAuthStore = () => {
                     }));
                 } else {
                     // Token is invalid
-                    this.logout();
+                    authStore.logout();
                 }
             } catch (error) {
                 console.error('Token verification failed:', error);
-                this.logout();
+                authStore.logout();
             }
         },
 
@@ -233,6 +248,8 @@ const createAuthStore = () => {
             return currentState;
         }
     };
+
+    return authStore;
 };
 
 export const authStore = createAuthStore();

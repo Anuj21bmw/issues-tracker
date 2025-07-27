@@ -48,7 +48,9 @@
             if (!result.success) {
                 toastStore.error(result.error || 'Registration failed');
             } else {
-                toastStore.success('Account created successfully!');
+                toastStore.success('Account created successfully! Please sign in.');
+                // Redirect to login page after successful registration
+                goto('/auth/login');
             }
         } catch (error) {
             toastStore.error('Registration failed: ' + error.message);
@@ -85,58 +87,50 @@
     <title>Create Account - AI Issues Tracker</title>
 </svelte:head>
 
-<div class="min-h-screen flex">
-    <!-- Left side - Branding & Benefits -->
-    <div class="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-purple-600 to-blue-700 flex-col justify-center items-center text-white p-12">
-        <div class="max-w-md w-full">
-            <!-- Logo -->
-            <div class="flex items-center mb-8">
-                <div class="h-12 w-12 bg-white/20 rounded-xl flex items-center justify-center mr-3">
-                    <svg class="h-7 w-7" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
-                    </svg>
+<div class="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50 flex">
+    <!-- Left side - Features showcase -->
+    <div class="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-purple-600 to-blue-700 relative overflow-hidden">
+        <div class="absolute inset-0 bg-black opacity-20"></div>
+        <div class="relative z-10 flex flex-col justify-center p-12 text-white">
+            <div class="mb-8">
+                <div class="flex items-center mb-6">
+                    <div class="h-12 w-12 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center mr-4">
+                        <svg class="h-7 w-7 text-white" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <h1 class="text-2xl font-bold">AI Issues Tracker</h1>
+                        <p class="text-purple-200">Smart Issue Management</p>
+                    </div>
                 </div>
-                <div>
-                    <h1 class="text-2xl font-bold">AI Issues Tracker</h1>
-                    <p class="text-purple-100 text-sm">Smart Issue Management</p>
-                </div>
+                <h2 class="text-4xl font-bold mb-4">Join thousands of teams</h2>
+                <p class="text-xl text-purple-100 mb-8">
+                    Streamline your workflow with AI-powered issue tracking and insights.
+                </p>
             </div>
 
-            <h2 class="text-3xl font-bold mb-4">Join Our Platform</h2>
-            <p class="text-xl text-purple-100 mb-8">
-                Create your account and start managing issues with AI-powered insights and team collaboration tools.
-            </p>
-
-            <!-- Benefits List -->
-            <div class="space-y-4">
+            <div class="space-y-6">
                 <div class="flex items-center">
-                    <div class="h-8 w-8 bg-white/20 rounded-lg flex items-center justify-center mr-3">
-                        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                    <div class="flex-shrink-0 w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center mr-4">
+                        <svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
                         </svg>
                     </div>
-                    <span>Secure and reliable platform</span>
+                    <span>AI-powered issue classification and prioritization</span>
                 </div>
                 <div class="flex items-center">
-                    <div class="h-8 w-8 bg-white/20 rounded-lg flex items-center justify-center mr-3">
-                        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                    <div class="flex-shrink-0 w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center mr-4">
+                        <svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
                         </svg>
                     </div>
-                    <span>AI-powered issue analysis</span>
+                    <span>Real-time collaboration and notifications</span>
                 </div>
                 <div class="flex items-center">
-                    <div class="h-8 w-8 bg-white/20 rounded-lg flex items-center justify-center mr-3">
-                        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z"/>
-                        </svg>
-                    </div>
-                    <span>Collaborative team workspace</span>
-                </div>
-                <div class="flex items-center">
-                    <div class="h-8 w-8 bg-white/20 rounded-lg flex items-center justify-center mr-3">
-                        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                    <div class="flex-shrink-0 w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center mr-4">
+                        <svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z"/>
                         </svg>
                     </div>
                     <span>Advanced analytics and reporting</span>
@@ -232,19 +226,11 @@
                                 class="absolute inset-y-0 right-0 pr-3 flex items-center"
                                 aria-label="Toggle password visibility"
                             >
-                                {#if showPassword}
-                                    <svg class="h-5 w-5 text-gray-400 hover:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878L21 21"/>
-                                    </svg>
-                                {:else}
-                                    <svg class="h-5 w-5 text-gray-400 hover:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
-                                    </svg>
-                                {/if}
+                                <span class="text-gray-400 hover:text-gray-600 text-sm">
+                                    {showPassword ? '🙈' : '👁️'}
+                                </span>
                             </button>
                         </div>
-                        <p class="mt-1 text-xs text-gray-500">Must be at least 6 characters</p>
                     </div>
 
                     <!-- Confirm Password Field -->
@@ -269,71 +255,56 @@
                                 class="absolute inset-y-0 right-0 pr-3 flex items-center"
                                 aria-label="Toggle password visibility"
                             >
-                                {#if showConfirmPassword}
-                                    <svg class="h-5 w-5 text-gray-400 hover:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878L21 21"/>
-                                    </svg>
-                                {:else}
-                                    <svg class="h-5 w-5 text-gray-400 hover:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
-                                    </svg>
-                                {/if}
+                                <span class="text-gray-400 hover:text-gray-600 text-sm">
+                                    {showConfirmPassword ? '🙈' : '👁️'}
+                                </span>
                             </button>
                         </div>
-                        {#if password && confirmPassword && password !== confirmPassword}
-                            <p class="mt-1 text-xs text-red-600">Passwords do not match</p>
-                        {/if}
                     </div>
 
-                    <!-- Terms and Conditions -->
-                    <div class="flex items-start">
-                        <div class="flex items-center h-5">
-                            <input
-                                id="terms"
-                                type="checkbox"
-                                class="h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded"
-                                required
-                            />
-                        </div>
-                        <div class="ml-3 text-sm">
-                            <label for="terms" class="text-gray-700">
-                                I agree to the 
-                                <a href="/terms" class="text-purple-600 hover:text-purple-800 font-medium">
-                                    Terms and Conditions
-                                </a>
-                                and 
-                                <a href="/privacy" class="text-purple-600 hover:text-purple-800 font-medium">
-                                    Privacy Policy
-                                </a>
-                            </label>
-                        </div>
+                    <!-- Terms and Privacy -->
+                    <div class="text-sm text-gray-600">
+                        By creating an account, you agree to our 
+                        <a href="#" class="text-purple-600 hover:text-purple-800 font-medium">Terms of Service</a> 
+                        and 
+                        <a href="#" class="text-purple-600 hover:text-purple-800 font-medium">Privacy Policy</a>.
                     </div>
 
                     <!-- Submit Button -->
-                    <button
-                        type="submit"
-                        disabled={loading || !fullName || !email || !password || !confirmPassword || password !== confirmPassword}
-                        class="w-full flex justify-center items-center px-4 py-3 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    >
-                        {#if loading}
-                            <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
-                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
-                            </svg>
-                            Creating account...
-                        {:else}
-                            Create account
-                        {/if}
-                    </button>
-                </form>
+                    <div>
+                        <button
+                            type="submit"
+                            disabled={loading}
+                            class="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                        >
+                            {#if loading}
+                                <span class="flex items-center">
+                                    <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                    </svg>
+                                    Creating account...
+                                </span>
+                            {:else}
+                                Create account
+                            {/if}
+                        </button>
+                    </div>
 
-                <!-- Footer -->
-                <div class="mt-8 text-center">
-                    <p class="text-xs text-gray-500">
-                        By creating an account, you agree to our secure data handling practices
-                    </p>
-                </div>
+                    <!-- Login Link -->
+                    <div class="text-center">
+                        <p class="text-sm text-gray-600">
+                            Already have an account? 
+                            <button 
+                                type="button"
+                                on:click={goToLogin}
+                                class="font-medium text-purple-600 hover:text-purple-500"
+                            >
+                                Sign in here
+                            </button>
+                        </p>
+                    </div>
+                </form>
             </div>
         </div>
     </div>

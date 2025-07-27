@@ -201,3 +201,22 @@ async def catch_all(path: str):
         return FileResponse("static/index.html")
     
     return {"error": "Not found"}, 404
+
+
+@app.get("/health")
+def health_check():
+    return {
+        "status": "healthy",
+        "timestamp": datetime.utcnow().isoformat(),
+        "database": "connected",
+        "version": "1.0.0"
+    }
+
+# Test endpoint for authentication
+@app.get("/api/test")
+def test_endpoint():
+    return {
+        "message": "Backend is working!",
+        "timestamp": datetime.utcnow().isoformat(),
+        "database_url": settings.database_url[:20] + "..." if settings.database_url else "not configured"
+    }
