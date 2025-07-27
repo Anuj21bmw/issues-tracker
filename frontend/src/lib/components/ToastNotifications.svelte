@@ -1,46 +1,43 @@
 <script>
-    import { fly } from 'svelte/transition';
     import { toastStore } from '$lib/stores/toast.js';
+    import { fly } from 'svelte/transition';
 
-    function getToastIcon(type) {
-        const icons = {
-            success: '✅',
-            error: '❌',
-            warning: '⚠️',
-            info: 'ℹ️'
-        };
-        return icons[type] || 'ℹ️';
-    }
+    $: toasts = $toastStore;
 
-    function getToastClasses(type) {
-        const classes = {
-            success: 'bg-green-50 border-green-200 text-green-800',
-            error: 'bg-red-50 border-red-200 text-red-800',
-            warning: 'bg-yellow-50 border-yellow-200 text-yellow-800',
-            info: 'bg-blue-50 border-blue-200 text-blue-800'
-        };
-        return classes[type] || classes.info;
-    }
+    const getIcon = (type) => {
+        switch (type) {
+            case 'success': return '✓';
+            case 'error': return '✕';
+            case 'warning': return '⚠';
+            default: return 'ℹ';
+        }
+    };
+
+    const getColorClass = (type) => {
+        switch (type) {
+            case 'success': return 'bg-green-500';
+            case 'error': return 'bg-red-500';
+            case 'warning': return 'bg-yellow-500';
+            default: return 'bg-blue-500';
+        }
+    };
 </script>
 
-<div class="fixed top-4 right-4 z-50 space-y-2 max-w-sm">
-    {#each $toastStore as toast (toast.id)}
+<div class="fixed top-4 right-4 z-50 space-y-2">
+    {#each toasts as toast (toast.id)}
         <div
-            class="flex items-center p-4 border rounded-lg shadow-lg {getToastClasses(toast.type)}"
-            transition:fly="{{ x: 300, duration: 300 }}"
+            in:fly={{ x: 300, duration: 300 }}
+            out:fly={{ x: 300, duration: 300 }}
+            class="flex items-center p-4 rounded-lg shadow-lg text-white max-w-sm {getColorClass(toast.type)}"
         >
-            <span class="text-lg mr-3">{getToastIcon(toast.type)}</span>
-            <div class="flex-1">
-                <p class="text-sm font-medium">{toast.message}</p>
-            </div>
-            {#if toast.dismissible}
-                <button
-                    class="ml-3 text-sm opacity-70 hover:opacity-100 focus:outline-none"
-                    on:click={() => toastStore.remove(toast.id)}
-                >
-                    ✕
-                </button>
-            {/if}
+            <span class="text-lg mr-3">{getIcon(toast.type)}</span>
+            <span class="flex-1">{toast.message}</span>
+            <button
+                on:click={() => toastStore.remove(toast.id)}
+                class="ml-2 text-white hover:text-gray-200 text-xl leading-none"
+            >
+                ×
+            </button>
         </div>
     {/each}
 </div>

@@ -1,129 +1,26 @@
-import { writable, derived } from 'svelte/store';
-import { authStore } from './auth.js';
-import { API_CONFIG, getApiUrl } from './config.js';
+// src/lib/stores/ai.js
+import { writable } from 'svelte/store';
+import { API_CONFIG, getApiUrl, getAuthHeaders } from '$lib/config.js';
 
+// AI store
 const createAIStore = () => {
     const { subscribe, set, update } = writable({
-        insights: [],
-        chatHistory: [],
-        isTyping: false,
-        services: {
-            classification: true,
-            chat: true,
-            analytics: true,
-            predictions: true
-        },
-        health: null,
-        stats: null,
-        loading: false,
-        error: null
+        analyzing: false,
+        insights: null,
+        predictions: null,
+        suggestions: null,
+        chatMessages: [],
+        chatLoading: false,
+        error: null,
+        analytics: null
     });
-
-    const getAuthHeaders = () => authStore.getAuthHeaders();
 
     return {
         subscribe,
 
-        async getInsights() {
-            update(state => ({ ...state, loading: true }));
-
-            try {
-                const response = await fetch(getApiUrl(API_CONFIG.endpoints.ai.insights), {
-                    headers: {
-                        'Content-Type': 'application/json',
-                        ...getAuthHeaders()
-                    }
-                });
-
-                if (response.ok) {
-                    const data = await response.json();
-                    update(state => ({
-                        ...state,
-                        insights: data.insights || [],
-                        loading: false
-                    }));
-                }
-            } catch (error) {
-                update(state => ({ ...state, loading: false, error: error.message }));
-            }
-        },
-
-        async sendChatMessage(message) {
-            update(state => ({ 
-                ...state, 
-                isTyping: true,
-                chatHistory: [...state.chatHistory, { type: 'user', message, timestamp: new Date() }]
-            }));
-
-            try {
-                const formData = new FormData();
-                formData.append('message', message);
-
-                const response = await fetch(getApiUrl(API_CONFIG.endpoints.ai.chat), {
-                    method: 'POST',
-                    headers: getAuthHeaders(),
-                    body: formData
-                });
-
-                if (!response.ok) {
-                    throw new Error('Failed to get AI response');
-                }
-
-                const data = await response.json();
-
-                update(state => ({
-                    ...state,
-                    isTyping: false,
-                    chatHistory: [...state.chatHistory, {
-                        type: 'ai',
-                        message: data.response.response,
-                        confidence: data.response.confidence,
-                        suggestions: data.response.suggestions || [],
-                        timestamp: new Date()
-                    }]
-                }));
-
-                return data.response;
-
-            } catch (error) {
-                update(state => ({
-                    ...state,
-                    isTyping: false,
-                    chatHistory: [...state.chatHistory, {
-                        type: 'ai',
-                        message: 'Sorry, I encountered an error processing your request.',
-                        timestamp: new Date()
-                    }]
-                }));
-                throw error;
-            }
-        },
-
-        async classifyIssue(title, description) {
-            try {
-                const formData = new FormData();
-                formData.append('title', title);
-                formData.append('description', description);
-
-                const response = await fetch(getApiUrl(API_CONFIG.endpoints.ai.classify), {
-                    method: 'POST',
-                    headers: getAuthHeaders(),
-                    body: formData
-                });
-
-                if (!response.ok) {
-                    throw new Error('Classification failed');
-                }
-
-                const data = await response.json();
-                return data.classification;
-
-            } catch (error) {
-                throw new Error(error.message || 'Classification service unavailable');
-            }
-        },
-
         async analyzeIssue(issueData) {
+            update(state => ({ ...state, analyzing: true, error: null }));
+
             try {
                 const response = await fetch(getApiUrl(API_CONFIG.endpoints.ai.analyze), {
                     method: 'POST',
@@ -135,26 +32,223 @@ const createAIStore = () => {
                 });
 
                 if (!response.ok) {
-                    throw new Error('Analysis failed');
+                    const errorData = await response.json().catch(() => ({ detail: 'Analysis failed' }));
+                    throw new Error(errorData.detail || 'Analysis failed');
                 }
 
-                const data = await response.json();
-                return data.analysis;
+                const analysis = await response.json();
+
+                update(state => ({
+                    ...state,
+                    insights: analysis,
+                    analyzing: false
+                }));
+
+                return analysis;
 
             } catch (error) {
-                throw new Error(error.message || 'Analysis service unavailable');
+                update(state => ({
+                    ...state,
+                    analyzing: false,
+                    error: error.message
+                }));
+                throw error;
             }
         },
 
-        clearChatHistory() {
-            update(state => ({ ...state, chatHistory: [] }));
+        async classifyIssue(issueData) {
+            try {
+                const response = await fetch(getApiUrl(API_CONFIG.endpoints.ai.classify), {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...getAuthHeaders()
+                    },
+                    body: JSON.stringify(issueData)
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({ detail: 'Classification failed' }));
+                    throw new Error(errorData.detail || 'Classification failed');
+                }
+
+                return await response.json();
+
+            } catch (error) {
+                throw error;
+            }
+        },
+
+        async predictResolution(issueId) {
+            try {
+                const response = await fetch(getApiUrl(API_CONFIG.endpoints.ai.predictResolution), {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...getAuthHeaders()
+                    },
+                    body: JSON.stringify({ issue_id: issueId })
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({ detail: 'Prediction failed' }));
+                    throw new Error(errorData.detail || 'Prediction failed');
+                }
+
+                const prediction = await response.json();
+
+                update(state => ({
+                    ...state,
+                    predictions: prediction
+                }));
+
+                return prediction;
+
+            } catch (error) {
+                throw error;
+            }
+        },
+
+        async suggestAssignment(issueId) {
+            try {
+                const response = await fetch(getApiUrl(API_CONFIG.endpoints.ai.suggestAssignment), {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...getAuthHeaders()
+                    },
+                    body: JSON.stringify({ issue_id: issueId })
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({ detail: 'Assignment suggestion failed' }));
+                    throw new Error(errorData.detail || 'Assignment suggestion failed');
+                }
+
+                const suggestions = await response.json();
+
+                update(state => ({
+                    ...state,
+                    suggestions
+                }));
+
+                return suggestions;
+
+            } catch (error) {
+                throw error;
+            }
+        },
+
+        async sendChatMessage(message, context = {}) {
+            update(state => ({
+                ...state,
+                chatLoading: true,
+                chatMessages: [...state.chatMessages, { role: 'user', content: message }]
+            }));
+
+            try {
+                const response = await fetch(getApiUrl(API_CONFIG.endpoints.ai.chat), {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...getAuthHeaders()
+                    },
+                    body: JSON.stringify({
+                        message,
+                        context,
+                        conversation_history: this.get().chatMessages.slice(-10) // Last 10 messages
+                    })
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({ detail: 'Chat failed' }));
+                    throw new Error(errorData.detail || 'Chat failed');
+                }
+
+                const chatResponse = await response.json();
+
+                update(state => ({
+                    ...state,
+                    chatLoading: false,
+                    chatMessages: [...state.chatMessages, { role: 'assistant', content: chatResponse.response }]
+                }));
+
+                return chatResponse;
+
+            } catch (error) {
+                update(state => ({
+                    ...state,
+                    chatLoading: false,
+                    error: error.message
+                }));
+                throw error;
+            }
+        },
+
+        async getDashboardInsights() {
+            try {
+                const response = await fetch(getApiUrl(API_CONFIG.endpoints.ai.insights), {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...getAuthHeaders()
+                    }
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({ detail: 'Failed to get insights' }));
+                    throw new Error(errorData.detail || 'Failed to get insights');
+                }
+
+                const insights = await response.json();
+
+                update(state => ({
+                    ...state,
+                    analytics: insights
+                }));
+
+                return insights;
+
+            } catch (error) {
+                throw error;
+            }
+        },
+
+        async getTeamAnalytics() {
+            try {
+                const response = await fetch(getApiUrl(API_CONFIG.endpoints.ai.teamAnalytics), {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...getAuthHeaders()
+                    }
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({ detail: 'Failed to get team analytics' }));
+                    throw new Error(errorData.detail || 'Failed to get team analytics');
+                }
+
+                return await response.json();
+
+            } catch (error) {
+                throw error;
+            }
+        },
+
+        clearChat() {
+            update(state => ({ ...state, chatMessages: [] }));
+        },
+
+        clearError() {
+            update(state => ({ ...state, error: null }));
+        },
+
+        // Get current state
+        get() {
+            let currentState;
+            subscribe(state => currentState = state)();
+            return currentState;
         }
     };
 };
 
 export const aiStore = createAIStore();
-
-// Derived stores
-export const aiInsights = derived(aiStore, $store => $store.insights);
-export const chatHistory = derived(aiStore, $store => $store.chatHistory);
-export const aiLoading = derived(aiStore, $store => $store.loading);

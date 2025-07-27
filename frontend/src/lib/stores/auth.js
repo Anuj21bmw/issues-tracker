@@ -1,7 +1,8 @@
+// src/lib/stores/auth.js
 import { writable, derived } from 'svelte/store';
 import { browser } from '$app/environment';
 import { goto } from '$app/navigation';
-import { API_CONFIG, getApiUrl } from './config.js';
+import { API_CONFIG, getApiUrl, getAuthHeaders } from '$lib/config.js';
 
 // Auth state
 const createAuthStore = () => {
@@ -15,11 +16,11 @@ const createAuthStore = () => {
 
     // Load token from localStorage on initialization
     if (browser) {
-        const savedToken = localStorage.getItem('auth_token');
-        const savedUser = localStorage.getItem('auth_user');
-        
-        if (savedToken && savedUser) {
-            try {
+        try {
+            const savedToken = localStorage.getItem('auth_token');
+            const savedUser = localStorage.getItem('auth_user');
+            
+            if (savedToken && savedUser) {
                 const user = JSON.parse(savedUser);
                 set({
                     user,
@@ -28,8 +29,10 @@ const createAuthStore = () => {
                     isLoading: false,
                     error: null
                 });
-            } catch (e) {
-                console.error('Failed to parse saved user data:', e);
+            }
+        } catch (e) {
+            console.error('Failed to parse saved user data:', e);
+            if (browser) {
                 localStorage.removeItem('auth_token');
                 localStorage.removeItem('auth_user');
             }
@@ -47,48 +50,53 @@ const createAuthStore = () => {
                 formData.append('username', email);
                 formData.append('password', password);
 
-                const response = await fetch(getApiUrl(API_CONFIG.endpoints.auth.login), {
+                const response = await fetch(getApiUrl('/api/auth/login'), {
                     method: 'POST',
                     body: formData
                 });
 
                 if (!response.ok) {
-                    const errorData = await response.json().catch(() => ({ detail: 'Login failed' }));
-                    throw new Error(errorData.detail || 'Login failed');
+                    let errorMessage = 'Login failed';
+                    try {
+                        const errorData = await response.json();
+                        errorMessage = errorData.detail || errorMessage;
+                    } catch (e) {
+                        // If we can't parse the error, use the default message
+                    }
+                    throw new Error(errorMessage);
                 }
 
                 const data = await response.json();
-                const token = data.access_token;
-
-                // Get user data
-                const userResponse = await fetch(getApiUrl(API_CONFIG.endpoints.auth.me), {
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                        'Content-Type': 'application/json'
-                    }
-                });
-
-                if (!userResponse.ok) {
-                    throw new Error('Failed to get user data');
+                
+                // Handle different response formats
+                let accessToken, user;
+                if (data.access_token) {
+                    accessToken = data.access_token;
+                    user = data.user || { email, full_name: email };
+                } else if (data.token) {
+                    accessToken = data.token;
+                    user = data.user || { email, full_name: email };
+                } else {
+                    throw new Error('Invalid response format');
                 }
-
-                const user = await userResponse.json();
 
                 // Save to localStorage
                 if (browser) {
-                    localStorage.setItem('auth_token', token);
+                    localStorage.setItem('auth_token', accessToken);
                     localStorage.setItem('auth_user', JSON.stringify(user));
                 }
 
                 set({
                     user,
-                    token,
+                    token: accessToken,
                     isAuthenticated: true,
                     isLoading: false,
                     error: null
                 });
 
-                return { success: true, user };
+                // Navigate to dashboard
+                await goto('/dashboard');
+                return { success: true };
 
             } catch (error) {
                 const errorMessage = error.message || 'Login failed';
@@ -105,7 +113,7 @@ const createAuthStore = () => {
             update(state => ({ ...state, isLoading: true, error: null }));
             
             try {
-                const response = await fetch(getApiUrl(API_CONFIG.endpoints.auth.register), {
+                const response = await fetch(getApiUrl('/api/auth/register'), {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -114,15 +122,35 @@ const createAuthStore = () => {
                 });
 
                 if (!response.ok) {
-                    const errorData = await response.json().catch(() => ({ detail: 'Registration failed' }));
-                    throw new Error(errorData.detail || 'Registration failed');
+                    let errorMessage = 'Registration failed';
+                    try {
+                        const errorData = await response.json();
+                        errorMessage = errorData.detail || errorMessage;
+                    } catch (e) {
+                        // Use default message if parsing fails
+                    }
+                    throw new Error(errorMessage);
                 }
 
-                const user = await response.json();
-                
-                update(state => ({ ...state, isLoading: false }));
-                
-                return { success: true, user };
+                const data = await response.json();
+                const { access_token, user } = data;
+
+                // Save to localStorage
+                if (browser) {
+                    localStorage.setItem('auth_token', access_token);
+                    localStorage.setItem('auth_user', JSON.stringify(user));
+                }
+
+                set({
+                    user,
+                    token: access_token,
+                    isAuthenticated: true,
+                    isLoading: false,
+                    error: null
+                });
+
+                await goto('/dashboard');
+                return { success: true };
 
             } catch (error) {
                 const errorMessage = error.message || 'Registration failed';
@@ -132,6 +160,43 @@ const createAuthStore = () => {
                     error: errorMessage
                 }));
                 return { success: false, error: errorMessage };
+            }
+        },
+
+        async verifyToken() {
+            if (!browser) return;
+            
+            const token = localStorage.getItem('auth_token');
+            if (!token) return;
+
+            try {
+                const response = await fetch(getApiUrl('/api/auth/me'), {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (response.ok) {
+                    const user = await response.json();
+                    
+                    if (browser) {
+                        localStorage.setItem('auth_user', JSON.stringify(user));
+                    }
+
+                    update(state => ({
+                        ...state,
+                        user,
+                        token,
+                        isAuthenticated: true,
+                        isLoading: false
+                    }));
+                } else {
+                    // Token is invalid
+                    this.logout();
+                }
+            } catch (error) {
+                console.error('Token verification failed:', error);
+                this.logout();
             }
         },
 
@@ -156,15 +221,9 @@ const createAuthStore = () => {
             update(state => ({ ...state, error: null }));
         },
 
-        // Helper to get auth headers
+        // Helper to get auth headers (for backward compatibility)
         getAuthHeaders() {
-            const state = this.get();
-            if (state.token) {
-                return {
-                    'Authorization': `Bearer ${state.token}`
-                };
-            }
-            return {};
+            return getAuthHeaders();
         },
 
         // Get current state
@@ -183,4 +242,3 @@ export const user = derived(authStore, $auth => $auth.user);
 export const isAuthenticated = derived(authStore, $auth => $auth.isAuthenticated);
 export const isLoading = derived(authStore, $auth => $auth.isLoading);
 export const authError = derived(authStore, $auth => $auth.error);
-

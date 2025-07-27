@@ -1,98 +1,13 @@
-<!-- <!DOCTYPE html>
-<html lang="en">
-	<head>
-		<meta charset="utf-8" />
-		<link rel="icon" href="%sveltekit.assets%/favicon.png" />
-		<meta name="viewport" content="width=device-width, initial-scale=1" />
-		<title>Issues & Insights Tracker</title>
-		%sveltekit.head%
-	</head>
-	<body data-sveltekit-preload-data="hover" class="bg-gray-50">
-		<div style="display: contents">%sveltekit.body%</div>
-	</body>
-</html> -->
-
-<!DOCTYPE html>
-<html lang="en" data-theme="light">
+<!doctype html>
+<html lang="en" %sveltekit.theme%>
     <head>
         <meta charset="utf-8" />
-        <link rel="icon" href="%sveltekit.assets%/favicon.png" />
+        <link rel="icon" href="%sveltekit.assets%/favicon.svg" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>AI-Enhanced Issues Tracker</title>
-        <meta name="description" content="Intelligent issue tracking with AI capabilities" />
-        
-        <!-- Tailwind CSS -->
-        <script src="https://cdn.tailwindcss.com"></script>
-        
-        <!-- Font -->
-        <link rel="preconnect" href="https://fonts.googleapis.com">
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-        
-        <style>
-            body {
-                font-family: 'Inter', sans-serif;
-            }
-            
-            /* Custom scrollbar */
-            ::-webkit-scrollbar {
-                width: 6px;
-            }
-            ::-webkit-scrollbar-track {
-                background: #f1f5f9;
-            }
-            ::-webkit-scrollbar-thumb {
-                background: #cbd5e1;
-                border-radius: 3px;
-            }
-            ::-webkit-scrollbar-thumb:hover {
-                background: #94a3b8;
-            }
-
-            /* Loading animation */
-            .loading-spinner {
-                animation: spin 1s linear infinite;
-            }
-            
-            @keyframes spin {
-                from { transform: rotate(0deg); }
-                to { transform: rotate(360deg); }
-            }
-
-            /* AI glow effect */
-            .ai-glow {
-                box-shadow: 0 0 20px rgba(139, 92, 246, 0.3);
-                transition: box-shadow 0.3s ease;
-            }
-            
-            .ai-glow:hover {
-                box-shadow: 0 0 25px rgba(139, 92, 246, 0.5);
-            }
-
-            /* Theme variables */
-            [data-theme="light"] {
-                --bg-primary: #ffffff;
-                --bg-secondary: #f8fafc;
-                --text-primary: #1e293b;
-                --text-secondary: #64748b;
-                --border-color: #e2e8f0;
-            }
-
-            [data-theme="dark"] {
-                --bg-primary: #1e293b;
-                --bg-secondary: #0f172a;
-                --text-primary: #f1f5f9;
-                --text-secondary: #94a3b8;
-                --border-color: #334155;
-            }
-        </style>
-        
+        <title>AI Issues Tracker</title>
         %sveltekit.head%
     </head>
-    <body data-sveltekit-preload-data="hover" class="bg-gray-50">
+    <body data-sveltekit-preload-data="hover" class="min-h-screen">
         <div style="display: contents">%sveltekit.body%</div>
-        
-        <!-- Toast notifications container -->
-        <div id="toast-container" class="fixed top-4 right-4 z-50 space-y-2"></div>
     </body>
 </html>

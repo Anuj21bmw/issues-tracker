@@ -1,58 +1,46 @@
+// src/lib/stores/toast.js
 import { writable } from 'svelte/store';
 
+// Toast store for notifications
 const createToastStore = () => {
     const { subscribe, update } = writable([]);
 
+    let nextId = 1;
+
+    const addToast = (message, type = 'info', duration = 5000) => {
+        const id = nextId++;
+        const toast = {
+            id,
+            message,
+            type,
+            duration,
+            timestamp: Date.now()
+        };
+
+        update(toasts => [...toasts, toast]);
+
+        // Auto remove after duration
+        if (duration > 0) {
+            setTimeout(() => {
+                removeToast(id);
+            }, duration);
+        }
+
+        return id;
+    };
+
+    const removeToast = (id) => {
+        update(toasts => toasts.filter(t => t.id !== id));
+    };
+
     return {
         subscribe,
-        
-        add(toast) {
-            const id = Math.random().toString(36).substr(2, 9);
-            const newToast = {
-                id,
-                type: 'info', // 'success', 'error', 'warning', 'info'
-                message: '',
-                duration: 5000,
-                dismissible: true,
-                ...toast
-            };
-
-            update(toasts => [...toasts, newToast]);
-
-            // Auto-remove after duration
-            if (newToast.duration > 0) {
-                setTimeout(() => {
-                    this.remove(id);
-                }, newToast.duration);
-            }
-
-            return id;
-        },
-
-        remove(id) {
-            update(toasts => toasts.filter(t => t.id !== id));
-        },
-
-        clear() {
-            update(() => []);
-        },
-
-        // Convenience methods
-        success(message, options = {}) {
-            return this.add({ type: 'success', message, ...options });
-        },
-
-        error(message, options = {}) {
-            return this.add({ type: 'error', message, duration: 7000, ...options });
-        },
-
-        warning(message, options = {}) {
-            return this.add({ type: 'warning', message, ...options });
-        },
-
-        info(message, options = {}) {
-            return this.add({ type: 'info', message, ...options });
-        }
+        success: (message, duration) => addToast(message, 'success', duration),
+        error: (message, duration) => addToast(message, 'error', duration),
+        warning: (message, duration) => addToast(message, 'warning', duration),
+        info: (message, duration) => addToast(message, 'info', duration),
+        remove: removeToast,
+        clear: () => update(() => [])
     };
 };
 

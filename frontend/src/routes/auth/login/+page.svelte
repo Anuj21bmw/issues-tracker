@@ -1,232 +1,310 @@
+<!-- src/routes/auth/login/+page.svelte -->
 <script>
-	import { authStore } from '$lib/stores/auth';
-	import { toastStore } from '$lib/stores/toast';
-	
-	let email = '';
-	let password = '';
-	let passwordElement;
-	let showDemoAccounts = false;
-	
-	async function handleSubmit() {
-		if (!email || !password) {
-			toastStore.add({
-				type: 'error',
-				message: 'Please fill in all fields'
-			});
-			return;
-		}
+    import { onMount } from 'svelte';
+    import { goto } from '$app/navigation';
+    import { authStore } from '$lib/stores/auth.js';
+    import { toastStore } from '$lib/stores/toast.js';
+    
+    let email = '';
+    let password = '';
+    let showPassword = false;
+    let showDemoAccounts = false;
+    let loading = false;
+    let passwordInput;
 
-		try {
-			await authStore.login(email, password);
-			toastStore.add({
-				type: 'success',
-				message: 'Login successful!'
-			});
-		} catch (error) {
-			toastStore.add({
-				type: 'error',
-				message: error.message
-			});
-		}
-	}
-	
-	function quickLogin(role) {
-		const accounts = {
-			admin: { email: 'admin@example.com', password: 'admin123' },
-			maintainer: { email: 'maintainer@example.com', password: 'maintainer123' },
-			reporter: { email: 'reporter@example.com', password: 'reporter123' }
-		};
-		
-		const account = accounts[role];
-		email = account.email;
-		password = account.password;
-		handleSubmit();
-	}
+    onMount(() => {
+        if ($authStore.isAuthenticated) {
+            goto('/dashboard');
+        }
+    });
 
-	function togglePasswordVisibility() {
-		if (passwordElement) {
-			const currentType = passwordElement.type;
-			passwordElement.type = currentType === 'password' ? 'text' : 'password';
-		}
-	}
+    async function handleSubmit(event) {
+        if (event) event.preventDefault();
+        
+        if (!email || !password) {
+            toastStore.error('Please fill in all fields');
+            return;
+        }
+
+        loading = true;
+        try {
+            const result = await authStore.login(email, password);
+            if (!result.success) {
+                toastStore.error(result.error || 'Login failed');
+            } else {
+                toastStore.success('Login successful!');
+            }
+        } catch (error) {
+            toastStore.error('Login failed: ' + error.message);
+        }
+        loading = false;
+    }
+
+    function quickLogin(role) {
+        const accounts = {
+            admin: { email: 'admin@example.com', password: 'admin123' },
+            maintainer: { email: 'maintainer@example.com', password: 'maintainer123' },
+            reporter: { email: 'reporter@example.com', password: 'reporter123' }
+        };
+        
+        const account = accounts[role];
+        if (account) {
+            email = account.email;
+            password = account.password;
+            showDemoAccounts = false;
+            setTimeout(() => {
+                handleSubmit();
+            }, 100);
+        }
+    }
+
+    function toggleDemoAccounts(event) {
+        if (event) {
+            event.preventDefault();
+            event.stopPropagation();
+        }
+        showDemoAccounts = !showDemoAccounts;
+    }
+
+    function togglePassword() {
+        showPassword = !showPassword;
+        if (passwordInput) {
+            passwordInput.type = showPassword ? 'text' : 'password';
+        }
+    }
+
+    function handleKeydown(event) {
+        if (event.key === 'Enter') {
+            handleSubmit();
+        }
+    }
 </script>
 
 <svelte:head>
-	<title>Sign In - Issues & Insights Tracker</title>
+    <title>Sign In - AI Issues Tracker</title>
 </svelte:head>
 
 <div class="min-h-screen flex">
-	<!-- Left side - Branding -->
-	<div class="hidden lg:flex lg:w-1/2 bg-blue-600 flex-col justify-center items-center text-white p-12">
-		<div class="max-w-md">
-			<div class="h-16 w-16 bg-white/20 rounded-2xl flex items-center justify-center mb-8">
-				<span class="text-2xl font-bold">IT</span>
-			</div>
-			<h1 class="text-4xl font-bold mb-4">Welcome Back</h1>
-			<p class="text-xl text-blue-100 mb-8">
-				Sign in to access your issue tracking dashboard and stay on top of your team's progress.
-			</p>
-			<div class="space-y-4 text-blue-100">
-				<div class="flex items-center">
-					<svg class="h-5 w-5 mr-3" fill="currentColor" viewBox="0 0 20 20">
-						<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
-					</svg>
-					Track and manage issues efficiently
-				</div>
-				<div class="flex items-center">
-					<svg class="h-5 w-5 mr-3" fill="currentColor" viewBox="0 0 20 20">
-						<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
-					</svg>
-					Real-time collaboration tools
-				</div>
-				<div class="flex items-center">
-					<svg class="h-5 w-5 mr-3" fill="currentColor" viewBox="0 0 20 20">
-						<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
-					</svg>
-					Comprehensive analytics and insights
-				</div>
-			</div>
-		</div>
-	</div>
+    <!-- Left side - Branding -->
+    <div class="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-blue-600 to-purple-700 flex-col justify-center items-center text-white p-12">
+        <div class="max-w-md w-full">
+            <!-- Logo -->
+            <div class="flex items-center mb-8">
+                <div class="h-12 w-12 bg-white/20 rounded-xl flex items-center justify-center mr-3">
+                    <span class="text-2xl font-bold">✓</span>
+                </div>
+                <div>
+                    <h1 class="text-2xl font-bold">AI Issues Tracker</h1>
+                    <p class="text-blue-100 text-sm">Smart Issue Management</p>
+                </div>
+            </div>
 
-	<!-- Right side - Login form -->
-	<div class="flex-1 flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-20 xl:px-24">
-		<div class="mx-auto w-full max-w-sm lg:w-96">
-			<div>
-				<div class="lg:hidden flex items-center justify-center mb-8">
-					<div class="h-12 w-12 bg-blue-600 rounded-xl flex items-center justify-center">
-						<span class="text-white font-bold">IT</span>
-					</div>
-				</div>
-				<h2 class="text-3xl font-bold text-gray-900">Sign in to your account</h2>
-				<p class="mt-2 text-sm text-gray-600">
-					Don't have an account?
-					<a href="/auth/register" class="font-medium text-blue-600 hover:text-blue-500 transition-colors">
-						Sign up for free
-					</a>
-				</p>
-			</div>
+            <h2 class="text-3xl font-bold mb-4">Welcome Back</h2>
+            <p class="text-xl text-blue-100 mb-8">
+                Sign in to access your AI-enhanced issue tracking dashboard and stay on top of your team's progress.
+            </p>
 
-			<div class="mt-8">
-				<form on:submit|preventDefault={handleSubmit} class="space-y-6">
-					<div>
-						<label for="email" class="block text-sm font-medium text-gray-700">
-							Email address
-						</label>
-						<div class="mt-1">
-							<input
-								id="email"
-								name="email"
-								type="email"
-								autocomplete="email"
-								required
-								bind:value={email}
-								class="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-								placeholder="Enter your email"
-							/>
-						</div>
-					</div>
+            <!-- Features List -->
+            <div class="space-y-4">
+                <div class="flex items-center">
+                    <div class="h-8 w-8 bg-white/20 rounded-lg flex items-center justify-center mr-3">
+                        <span class="text-lg">✓</span>
+                    </div>
+                    <span>Track and manage issues efficiently</span>
+                </div>
+                <div class="flex items-center">
+                    <div class="h-8 w-8 bg-white/20 rounded-lg flex items-center justify-center mr-3">
+                        <span class="text-lg">⚡</span>
+                    </div>
+                    <span>AI-powered insights and predictions</span>
+                </div>
+                <div class="flex items-center">
+                    <div class="h-8 w-8 bg-white/20 rounded-lg flex items-center justify-center mr-3">
+                        <span class="text-lg">👥</span>
+                    </div>
+                    <span>Real-time team collaboration</span>
+                </div>
+            </div>
+        </div>
+    </div>
 
-					<div>
-						<label for="password" class="block text-sm font-medium text-gray-700">
-							Password
-						</label>
-						<div class="mt-1 relative">
-							<input
-								bind:this={passwordElement}
-								id="password"
-								name="password"
-								type="password"
-								autocomplete="current-password"
-								required
-								bind:value={password}
-								class="appearance-none block w-full px-3 py-2 pr-10 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-								placeholder="Enter your password"
-							/>
-							<button
-								type="button"
-								class="absolute inset-y-0 right-0 pr-3 flex items-center"
-								on:click={togglePasswordVisibility}
-								aria-label="Toggle password visibility"
-							>
-								<svg class="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-								</svg>
-							</button>
-						</div>
-					</div>
+    <!-- Right side - Login Form -->
+    <div class="w-full lg:w-1/2 flex items-center justify-center p-8">
+        <div class="max-w-md w-full">
+            <!-- Mobile Logo -->
+            <div class="lg:hidden flex items-center justify-center mb-8">
+                <div class="h-12 w-12 bg-gradient-to-br from-blue-600 to-purple-700 rounded-xl flex items-center justify-center mr-3">
+                    <span class="text-2xl font-bold text-white">✓</span>
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold text-gray-900">AI Issues Tracker</h1>
+                    <p class="text-gray-600 text-sm">Smart Issue Management</p>
+                </div>
+            </div>
 
-					<div class="flex items-center justify-between">
-						<div class="flex items-center">
-							<input
-								id="remember-me"
-								name="remember-me"
-								type="checkbox"
-								class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-							/>
-							<label for="remember-me" class="ml-2 block text-sm text-gray-900">
-								Remember me
-							</label>
-						</div>
+            <div class="bg-white">
+                <div class="text-center mb-8">
+                    <h2 class="text-3xl font-bold text-gray-900">Sign in to your account</h2>
+                    <p class="text-gray-600 mt-2">
+                        Don't have an account? 
+                        <a href="/auth/register" class="text-blue-600 hover:text-blue-800 font-medium">
+                            Sign up for free
+                        </a>
+                    </p>
+                </div>
 
-						<div class="text-sm">
-							<button
-								type="button"
-								on:click={() => showDemoAccounts = !showDemoAccounts}
-								class="font-medium text-blue-600 hover:text-blue-500"
-							>
-								Demo accounts
-							</button>
-						</div>
-					</div>
+                <form on:submit|preventDefault={handleSubmit} class="space-y-6">
+                    <!-- Email Field -->
+                    <div>
+                        <label for="email" class="block text-sm font-medium text-gray-700 mb-2">
+                            Email address
+                        </label>
+                        <input
+                            id="email"
+                            type="email"
+                            bind:value={email}
+                            on:keydown={handleKeydown}
+                            placeholder="Enter your email"
+                            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                            required
+                        />
+                    </div>
 
-					<div>
-						<button
-							type="submit"
-							disabled={$authStore.loading || !email || !password}
-							class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-						>
-							{#if $authStore.loading}
-								<div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-								Signing in...
-							{:else}
-								Sign in
-							{/if}
-						</button>
-					</div>
+                    <!-- Password Field -->
+                    <div>
+                        <label for="password" class="block text-sm font-medium text-gray-700 mb-2">
+                            Password
+                        </label>
+                        <div class="relative">
+                            <input
+                                bind:this={passwordInput}
+                                id="password"
+                                type="password"
+                                bind:value={password}
+                                on:keydown={handleKeydown}
+                                placeholder="Enter your password"
+                                class="w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                                required
+                            />
+                            <button
+                                type="button"
+                                on:click={togglePassword}
+                                class="absolute inset-y-0 right-0 pr-3 flex items-center"
+                                aria-label="Toggle password visibility"
+                            >
+                                <span class="text-gray-400 hover:text-gray-600">
+                                    {showPassword ? '🙈' : '👁️'}
+                                </span>
+                            </button>
+                        </div>
+                    </div>
 
-					<!-- Demo Accounts (collapsible) -->
-					{#if showDemoAccounts}
-						<div class="mt-6 p-4 bg-gray-50 rounded-lg border">
-							<h4 class="text-sm font-medium text-gray-900 mb-3">Demo Accounts (Development Only):</h4>
-							<div class="space-y-2">
-								<button
-									type="button"
-									on:click={() => quickLogin('admin')}
-									class="w-full text-left p-2 text-xs bg-white rounded border hover:bg-gray-50 transition-colors"
-								>
-									<strong class="text-blue-600">Admin:</strong> admin@example.com
-								</button>
-								<button
-									type="button"
-									on:click={() => quickLogin('maintainer')}
-									class="w-full text-left p-2 text-xs bg-white rounded border hover:bg-gray-50 transition-colors"
-								>
-									<strong class="text-indigo-600">Maintainer:</strong> maintainer@example.com
-								</button>
-								<button
-									type="button"
-									on:click={() => quickLogin('reporter')}
-									class="w-full text-left p-2 text-xs bg-white rounded border hover:bg-gray-50 transition-colors"
-								>
-									<strong class="text-green-600">Reporter:</strong> reporter@example.com
-								</button>
-							</div>
-						</div>
-					{/if}
-				</form>
-			</div>
-		</div>
-	</div>
+                    <!-- Remember me & Demo accounts -->
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center">
+                            <input
+                                id="remember-me"
+                                type="checkbox"
+                                class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                            />
+                            <label for="remember-me" class="ml-2 block text-sm text-gray-900">
+                                Remember me
+                            </label>
+                        </div>
+
+                        <button
+                            type="button"
+                            on:click={toggleDemoAccounts}
+                            class="text-sm font-medium text-blue-600 hover:text-blue-800 flex items-center cursor-pointer"
+                        >
+                            Demo accounts
+                            <span class="ml-1 transition-transform duration-200 {showDemoAccounts ? 'rotate-180' : ''}">
+                                ⬇️
+                            </span>
+                        </button>
+                    </div>
+
+                    <!-- Demo Accounts Section -->
+                    {#if showDemoAccounts}
+                        <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3 animate-in">
+                            <h4 class="text-sm font-semibold text-blue-900 mb-3">🎯 Try Demo Accounts:</h4>
+                            
+                            <button
+                                type="button"
+                                on:click|preventDefault={() => quickLogin('admin')}
+                                class="w-full text-left p-3 bg-white border border-blue-200 rounded-lg hover:bg-blue-50 hover:border-blue-300 transition-all group cursor-pointer"
+                            >
+                                <div class="flex items-center justify-between">
+                                    <div>
+                                        <div class="font-medium text-blue-900">👑 Admin User</div>
+                                        <div class="text-sm text-blue-600">admin@example.com</div>
+                                    </div>
+                                    <span class="px-2 py-1 bg-red-100 text-red-800 text-xs rounded-full font-medium">ADMIN</span>
+                                </div>
+                            </button>
+
+                            <button
+                                type="button"
+                                on:click|preventDefault={() => quickLogin('maintainer')}
+                                class="w-full text-left p-3 bg-white border border-blue-200 rounded-lg hover:bg-blue-50 hover:border-blue-300 transition-all group cursor-pointer"
+                            >
+                                <div class="flex items-center justify-between">
+                                    <div>
+                                        <div class="font-medium text-blue-900">🔧 Maintainer User</div>
+                                        <div class="text-sm text-blue-600">maintainer@example.com</div>
+                                    </div>
+                                    <span class="px-2 py-1 bg-yellow-100 text-yellow-800 text-xs rounded-full font-medium">MAINTAINER</span>
+                                </div>
+                            </button>
+
+                            <button
+                                type="button"
+                                on:click|preventDefault={() => quickLogin('reporter')}
+                                class="w-full text-left p-3 bg-white border border-blue-200 rounded-lg hover:bg-blue-50 hover:border-blue-300 transition-all group cursor-pointer"
+                            >
+                                <div class="flex items-center justify-between">
+                                    <div>
+                                        <div class="font-medium text-blue-900">📝 Reporter User</div>
+                                        <div class="text-sm text-blue-600">reporter@example.com</div>
+                                    </div>
+                                    <span class="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full font-medium">REPORTER</span>
+                                </div>
+                            </button>
+
+                            <p class="text-xs text-blue-600 mt-3 text-center">
+                                ✨ Click any demo account to instantly sign in!
+                            </p>
+                        </div>
+                    {/if}
+
+                    <!-- Submit Button -->
+                    <button
+                        type="submit"
+                        disabled={loading}
+                        class="w-full flex justify-center items-center px-4 py-3 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
+                    >
+                        {#if loading}
+                            <span class="mr-2">⏳</span>
+                            Signing in...
+                        {:else}
+                            Sign in
+                        {/if}
+                    </button>
+                </form>
+
+                <!-- Footer Links -->
+                <div class="mt-8 text-center space-y-2">
+                    <p class="text-sm text-gray-600">
+                        Forgot your password? 
+                        <a href="/auth/forgot-password" class="text-blue-600 hover:text-blue-800 font-medium">
+                            Reset it here
+                        </a>
+                    </p>
+                    <p class="text-xs text-gray-500">
+                        🔒 Secure sign-in with industry-standard encryption
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>

@@ -1,7 +1,8 @@
-import { writable, derived } from 'svelte/store';
-import { authStore } from './auth.js';
-import { API_CONFIG, getApiUrl } from './config.js';
+// src/lib/stores/issues.js
+import { writable } from 'svelte/store';
+import { API_CONFIG, getApiUrl, getAuthHeaders } from '$lib/config.js';
 
+// Issues store
 const createIssuesStore = () => {
     const { subscribe, set, update } = writable({
         issues: [],
@@ -12,32 +13,40 @@ const createIssuesStore = () => {
             status: '',
             severity: '',
             assignee: '',
-            search: ''
+            search: '',
+            tags: []
         },
         pagination: {
             page: 1,
-            limit: 20,
+            pageSize: 20,
             total: 0,
             totalPages: 0
         }
     });
 
-    const getAuthHeaders = () => authStore.getAuthHeaders();
-
     return {
         subscribe,
 
-        async loadIssues(page = 1, filters = {}) {
+        async loadIssues(params = {}) {
             update(state => ({ ...state, loading: true, error: null }));
 
             try {
-                const params = new URLSearchParams({
-                    skip: ((page - 1) * 20).toString(),
-                    limit: '20',
-                    ...filters
-                });
+                const searchParams = new URLSearchParams();
+                
+                // Add pagination
+                searchParams.append('page', params.page || 1);
+                searchParams.append('page_size', params.pageSize || 20);
 
-                const response = await fetch(`${getApiUrl(API_CONFIG.endpoints.issues.list)}?${params}`, {
+                // Add filters
+                if (params.status) searchParams.append('status', params.status);
+                if (params.severity) searchParams.append('severity', params.severity);
+                if (params.assignee) searchParams.append('assignee_id', params.assignee);
+                if (params.search) searchParams.append('search', params.search);
+                if (params.tags?.length) {
+                    params.tags.forEach(tag => searchParams.append('tags', tag));
+                }
+
+                const response = await fetch(`${getApiUrl(API_CONFIG.endpoints.issues.list)}?${searchParams}`, {
                     headers: {
                         'Content-Type': 'application/json',
                         ...getAuthHeaders()
@@ -52,12 +61,12 @@ const createIssuesStore = () => {
 
                 update(state => ({
                     ...state,
-                    issues: data.issues || [],
+                    issues: data.items || data,
                     pagination: {
-                        page,
-                        limit: 20,
-                        total: data.total || 0,
-                        totalPages: Math.ceil((data.total || 0) / 20)
+                        page: data.page || 1,
+                        pageSize: data.page_size || 20,
+                        total: data.total || data.length,
+                        totalPages: data.total_pages || Math.ceil((data.total || data.length) / (data.page_size || 20))
                     },
                     loading: false
                 }));
@@ -124,7 +133,10 @@ const createIssuesStore = () => {
 
                 const response = await fetch(getApiUrl(API_CONFIG.endpoints.issues.create), {
                     method: 'POST',
-                    headers: getAuthHeaders(),
+                    headers: {
+                        ...getAuthHeaders()
+                        // Don't set Content-Type for FormData
+                    },
                     body: formData
                 });
 
@@ -135,7 +147,7 @@ const createIssuesStore = () => {
 
                 const newIssue = await response.json();
 
-                // Add to the beginning of issues list
+                // Add to issues list
                 update(state => ({
                     ...state,
                     issues: [newIssue, ...state.issues]
@@ -144,7 +156,7 @@ const createIssuesStore = () => {
                 return newIssue;
 
             } catch (error) {
-                throw new Error(error.message || 'Failed to create issue');
+                throw error;
             }
         },
 
@@ -166,7 +178,7 @@ const createIssuesStore = () => {
 
                 const updatedIssue = await response.json();
 
-                // Update in issues list
+                // Update in issues list and current issue
                 update(state => ({
                     ...state,
                     issues: state.issues.map(issue => 
@@ -178,27 +190,68 @@ const createIssuesStore = () => {
                 return updatedIssue;
 
             } catch (error) {
-                throw new Error(error.message || 'Failed to update issue');
+                throw error;
             }
         },
 
-        setFilters(filters) {
+        async deleteIssue(id) {
+            try {
+                const response = await fetch(getApiUrl(API_CONFIG.endpoints.issues.delete(id)), {
+                    method: 'DELETE',
+                    headers: {
+                        ...getAuthHeaders()
+                    }
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({ detail: 'Failed to delete issue' }));
+                    throw new Error(errorData.detail || 'Failed to delete issue');
+                }
+
+                // Remove from issues list
+                update(state => ({
+                    ...state,
+                    issues: state.issues.filter(issue => issue.id !== id),
+                    currentIssue: state.currentIssue?.id === id ? null : state.currentIssue
+                }));
+
+            } catch (error) {
+                throw error;
+            }
+        },
+
+        updateFilters(newFilters) {
             update(state => ({
                 ...state,
-                filters: { ...state.filters, ...filters }
+                filters: { ...state.filters, ...newFilters }
+            }));
+        },
+
+        clearFilters() {
+            update(state => ({
+                ...state,
+                filters: {
+                    status: '',
+                    severity: '',
+                    assignee: '',
+                    search: '',
+                    tags: []
+                }
             }));
         },
 
         clearError() {
             update(state => ({ ...state, error: null }));
+        },
+
+        setCurrentIssue(issue) {
+            update(state => ({ ...state, currentIssue: issue }));
+        },
+
+        clearCurrentIssue() {
+            update(state => ({ ...state, currentIssue: null }));
         }
     };
 };
 
 export const issuesStore = createIssuesStore();
-
-// Derived stores
-export const issues = derived(issuesStore, $store => $store.issues);
-export const currentIssue = derived(issuesStore, $store => $store.currentIssue);
-export const issuesLoading = derived(issuesStore, $store => $store.loading);
-

@@ -1,42 +1,38 @@
-import { writable, derived } from 'svelte/store';
+// src/lib/stores/ui.js
+import { writable } from 'svelte/store';
 import { browser } from '$app/environment';
 
+// UI state store
 const createUIStore = () => {
     const { subscribe, set, update } = writable({
-        sidebarCollapsed: false,
         theme: 'light',
-        loading: {},
-        modals: {},
-        notifications: {
-            position: 'top-right',
-            maxVisible: 5
-        }
+        sidebarOpen: true,
+        mobileMenuOpen: false,
+        chatOpen: false,
+        isLoading: false,
+        modal: null
     });
 
-    // Load saved UI preferences
+    // Load theme from localStorage on initialization
     if (browser) {
-        const savedTheme = localStorage.getItem('ui_theme');
-        const savedSidebar = localStorage.getItem('ui_sidebar_collapsed');
-        
-        if (savedTheme || savedSidebar) {
-            update(state => ({
-                ...state,
-                theme: savedTheme || 'light',
-                sidebarCollapsed: savedSidebar === 'true'
-            }));
-        }
+        const savedTheme = localStorage.getItem('ui_theme') || 'light';
+        update(state => ({ ...state, theme: savedTheme }));
+        document.documentElement.setAttribute('data-theme', savedTheme);
     }
 
     return {
         subscribe,
-
-        toggleSidebar() {
+        
+        toggleTheme() {
             update(state => {
-                const collapsed = !state.sidebarCollapsed;
+                const newTheme = state.theme === 'light' ? 'dark' : 'light';
+                
                 if (browser) {
-                    localStorage.setItem('ui_sidebar_collapsed', collapsed.toString());
+                    localStorage.setItem('ui_theme', newTheme);
+                    document.documentElement.setAttribute('data-theme', newTheme);
                 }
-                return { ...state, sidebarCollapsed: collapsed };
+                
+                return { ...state, theme: newTheme };
             });
         },
 
@@ -46,37 +42,47 @@ const createUIStore = () => {
                     localStorage.setItem('ui_theme', theme);
                     document.documentElement.setAttribute('data-theme', theme);
                 }
+                
                 return { ...state, theme };
             });
         },
 
-        setLoading(key, loading) {
-            update(state => ({
-                ...state,
-                loading: { ...state.loading, [key]: loading }
-            }));
+        toggleSidebar() {
+            update(state => ({ ...state, sidebarOpen: !state.sidebarOpen }));
         },
 
-        openModal(modalId, data = {}) {
-            update(state => ({
-                ...state,
-                modals: { ...state.modals, [modalId]: { open: true, data } }
-            }));
+        setSidebar(open) {
+            update(state => ({ ...state, sidebarOpen: open }));
         },
 
-        closeModal(modalId) {
-            update(state => ({
-                ...state,
-                modals: { ...state.modals, [modalId]: { open: false, data: {} } }
-            }));
+        toggleMobileMenu() {
+            update(state => ({ ...state, mobileMenuOpen: !state.mobileMenuOpen }));
+        },
+
+        setMobileMenu(open) {
+            update(state => ({ ...state, mobileMenuOpen: open }));
+        },
+
+        toggleChat() {
+            update(state => ({ ...state, chatOpen: !state.chatOpen }));
+        },
+
+        setChat(open) {
+            update(state => ({ ...state, chatOpen: open }));
+        },
+
+        setLoading(loading) {
+            update(state => ({ ...state, isLoading: loading }));
+        },
+
+        openModal(modal) {
+            update(state => ({ ...state, modal }));
+        },
+
+        closeModal() {
+            update(state => ({ ...state, modal: null }));
         }
     };
 };
 
 export const uiStore = createUIStore();
-
-
-// Derived stores
-export const theme = derived(uiStore, $ui => $ui.theme);
-export const sidebarCollapsed = derived(uiStore, $ui => $ui.sidebarCollapsed);
-export const loading = derived(uiStore, $ui => $ui.loading);

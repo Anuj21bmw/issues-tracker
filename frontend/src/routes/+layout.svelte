@@ -7,7 +7,6 @@
     import { uiStore } from '$lib/stores/ui.js';
     import { wsStore } from '$lib/stores/websocket.js';
     import ToastNotifications from '$lib/components/ToastNotifications.svelte';
-    // import AIChatAssistant from '$lib/components/ai/AIChatAssistant.svelte';
 
     $: isAuthPage = $page.url.pathname.startsWith('/auth');
     $: showChat = $authStore.isAuthenticated && !isAuthPage;
@@ -35,7 +34,11 @@
 </script>
 
 <svelte:head>
-    <title>AI-Enhanced Issues Tracker</title>
+    <title>AI Issues Tracker - Smart Issue Management</title>
+    <meta name="description" content="AI-enhanced issue tracking and management platform for modern teams" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <link rel="alternate icon" href="/favicon.ico">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </svelte:head>
 
 <main class="min-h-screen">
@@ -43,8 +46,3 @@
 </main>
 
 <ToastNotifications />
-
-<!-- Uncomment when AIChatAssistant is ready -->
-<!-- {#if showChat}
-    <AIChatAssistant />
-{/if} -->
