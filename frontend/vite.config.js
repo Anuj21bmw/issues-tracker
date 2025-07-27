@@ -1,20 +1,14 @@
-// vite.config.js
 import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';
 
 export default defineConfig({
-    plugins: [sveltekit()],
-    server: {
-        port: 5173,
-        host: '0.0.0.0'
-    },
-    define: {
-        global: 'globalThis'
-    },
-    optimizeDeps: {
-        include: []
-    },
-    build: {
-        target: 'esnext'
-    }
+	plugins: [sveltekit()],
+	server: {
+		port: 3000,
+		host: true
+	},
+	preview: {
+		port: 3000,
+		host: true
+	}
 });
